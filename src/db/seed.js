@@ -10,7 +10,7 @@ async function main() {
     update: {},
     create: {
       id: 'pharmacy-uws-001',
-      name: 'MedPlus Upper West Side',
+      name: 'Clayworth Pharmacy',
       address: '2880 Broadway, New York, NY 10025',
       lat: 40.8034, lng: -73.9663,
       phone: '(212) 555-0100',
