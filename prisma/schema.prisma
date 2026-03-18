@@ -1,0 +1,323 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Driver {
+  id            String       @id @default(uuid())
+  driverId      String       @unique
+  firstName     String
+  lastName      String
+  email         String       @unique
+  passwordHash  String
+  phone         String
+  role          Role         @default(DRIVER)
+  language      Language     @default(EN)
+  mapsLanguage  Language     @default(EN)
+  zone          String
+  pharmacyId    String?
+  shiftType     String       @default("Morning")
+  status        DriverStatus @default(OFFLINE)
+  deviceId      String?
+  appVersion    String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  pharmacy      Pharmacy?    @relation(fields: [pharmacyId], references: [id])
+  sessions      Session[]
+  bundles       Bundle[]
+  scans         Scan[]
+  deliveries    Delivery[]
+  gpsPings      GpsPing[]
+  auditLogs     AuditLog[]
+  discrepancies Discrepancy[]
+
+  @@map("drivers")
+}
+
+model Session {
+  id           String    @id @default(uuid())
+  driverId     String
+  deviceId     String
+  refreshToken String    @unique
+  loginAt      DateTime  @default(now())
+  logoutAt     DateTime?
+  loginGpsLat  Float?
+  loginGpsLng  Float?
+  isActive     Boolean   @default(true)
+  ipAddress    String?
+  userAgent    String?
+
+  driver       Driver    @relation(fields: [driverId], references: [id])
+  scans        Scan[]
+
+  @@map("sessions")
+}
+
+model Pharmacy {
+  id       String    @id @default(uuid())
+  name     String
+  address  String
+  lat      Float
+  lng      Float
+  phone    String?
+  zone     String
+
+  drivers  Driver[]
+  packages Package[]
+
+  @@map("pharmacies")
+}
+
+model Patient {
+  id          String    @id @default(uuid())
+  firstName   String
+  lastName    String
+  dobHash     String
+  email       String?   @unique
+  phone       String?
+  address     String
+  addressLat  Float?
+  addressLng  Float?
+  portalToken String    @unique @default(uuid())
+  language    Language  @default(EN)
+  facilityId  String?
+  createdAt   DateTime  @default(now())
+
+  facility    Facility? @relation(fields: [facilityId], references: [id])
+  packages    Package[]
+
+  @@map("patients")
+}
+
+model Facility {
+  id           String    @id @default(uuid())
+  name         String
+  address      String
+  lat          Float
+  lng          Float
+  phone        String?
+  email        String    @unique
+  passwordHash String
+
+  patients     Patient[]
+  packages     Package[]
+
+  @@map("facilities")
+}
+
+model Package {
+  id            String        @id @default(uuid())
+  rxId          String        @unique
+  patientId     String
+  pharmacyId    String?
+  facilityId    String?
+  bundleId      String?
+  medication    String
+  dosage        String?
+  quantity      String?
+  status        PackageStatus @default(PENDING)
+  urgent        Boolean       @default(false)
+  refrigerated  Boolean       @default(false)
+  controlled    Boolean       @default(false)
+  scheduleClass String?
+  deliveryDate  DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  pharmacy      Pharmacy?     @relation(fields: [pharmacyId], references: [id])
+  facility      Facility?     @relation(fields: [facilityId], references: [id])
+  bundle        Bundle?       @relation(fields: [bundleId], references: [id])
+  scans         Scan[]
+  discrepancies Discrepancy[]
+
+  @@map("packages")
+}
+
+model Bundle {
+  id          String       @id @default(uuid())
+  patientId   String?
+  facilityId  String?
+  address     String
+  addressLat  Float?
+  addressLng  Float?
+  driverId    String?
+  stopOrder   Int          @default(0)
+  status      BundleStatus @default(PENDING)
+  eta         DateTime?
+  etaMinutes  Int?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  driver      Driver?      @relation(fields: [driverId], references: [id])
+  packages    Package[]
+  deliveries  Delivery[]
+
+  @@map("bundles")
+}
+
+model Scan {
+  id        String   @id @default(uuid())
+  packageId String
+  driverId  String
+  sessionId String
+  scanType  ScanType
+  gpsLat    Float
+  gpsLng    Float
+  timestamp DateTime @default(now())
+  notes     String?
+
+  package   Package  @relation(fields: [packageId], references: [id])
+  driver    Driver   @relation(fields: [driverId], references: [id])
+  session   Session  @relation(fields: [sessionId], references: [id])
+
+  @@map("scans")
+}
+
+model Delivery {
+  id            String   @id @default(uuid())
+  bundleId      String
+  driverId      String
+  deliveredAt   DateTime @default(now())
+  gpsLat        Float
+  gpsLng        Float
+  signatureUrl  String?
+  photoUrl      String?
+  recipientName String?
+  notes         String?
+
+  bundle        Bundle   @relation(fields: [bundleId], references: [id])
+  driver        Driver   @relation(fields: [driverId], references: [id])
+
+  @@map("deliveries")
+}
+
+model GpsPing {
+  id        String   @id @default(uuid())
+  driverId  String
+  lat       Float
+  lng       Float
+  accuracy  Float?
+  speed     Float?
+  heading   Float?
+  timestamp DateTime @default(now())
+
+  driver    Driver   @relation(fields: [driverId], references: [id])
+
+  @@index([driverId, timestamp])
+  @@map("gps_pings")
+}
+
+model Discrepancy {
+  id          String            @id @default(uuid())
+  packageId   String?
+  driverId    String
+  type        DiscrepancyType
+  description String
+  flaggedAt   DateTime          @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  notes       String?
+  status      DiscrepancyStatus @default(OPEN)
+
+  package     Package?          @relation(fields: [packageId], references: [id])
+  driver      Driver            @relation(fields: [driverId], references: [id])
+
+  @@map("discrepancies")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorType  String
+  action     String
+  entityType String?
+  entityId   String?
+  timestamp  DateTime @default(now())
+  ipAddress  String?
+  gpsLat     Float?
+  gpsLng     Float?
+  metadata   Json?
+
+  driver     Driver?  @relation(fields: [actorId], references: [id])
+
+  @@map("audit_log")
+}
+
+model AppVersion {
+  id           String   @id @default(uuid())
+  platform     String
+  version      String
+  downloadUrl  String
+  releaseNotes String?
+  isLatest     Boolean  @default(true)
+  isMinimum    Boolean  @default(false)
+  publishedAt  DateTime @default(now())
+  publishedBy  String?
+
+  @@map("app_versions")
+}
+
+enum Role {
+  DRIVER
+  DISPATCHER
+  SUPERVISOR
+  ADMIN
+}
+
+enum Language {
+  EN
+  ES
+}
+
+enum DriverStatus {
+  ACTIVE
+  IDLE
+  OFFLINE
+  SUSPENDED
+}
+
+enum PackageStatus {
+  PENDING
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  RETURNED
+}
+
+enum BundleStatus {
+  PENDING
+  ASSIGNED
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+}
+
+enum ScanType {
+  PICKUP
+  DELIVERY
+  MISMATCH
+  CONDITION_CHECK
+}
+
+enum DiscrepancyType {
+  ITEM_NOT_ON_MANIFEST
+  MISSING_AT_DELIVERY
+  DAMAGED
+  WRONG_ADDRESS
+  SEAL_BROKEN
+  OUT_OF_ORDER
+}
+
+enum DiscrepancyStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  ESCALATED
+}
