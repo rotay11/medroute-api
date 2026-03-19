@@ -8,7 +8,7 @@ router.use(authenticate, requireDispatcher);
 router.get('/drivers', async (req, res) => {
   try {
     const drivers = await prisma.driver.findMany({
-      where: { role:'DRIVER' },
+      where: {},
       select: {
         id:true, driverId:true, firstName:true, lastName:true, status:true, zone:true, language:true,
         gpsPings: { orderBy:{ timestamp:'desc' }, take:1, select:{ lat:true, lng:true, timestamp:true } },
