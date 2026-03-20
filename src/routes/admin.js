@@ -26,7 +26,7 @@ router.get('/drivers', requireSupervisor, async (req, res) => {
 });
 
 router.post('/drivers', requireAdmin,
-  [body('firstName').trim().notEmpty(), body('lastName').trim().notEmpty(), body('email').isEmail().normalizeEmail(), body('phone').notEmpty(), body('role').isIn(['DRIVER','DISPATCHER','SUPERVISOR']), body('language').isIn(['EN','ES'])],
+  [body('firstName').trim().notEmpty(), body('lastName').trim().notEmpty(), body('email').isEmail().normalizeEmail(), body('phone').notEmpty(), body('role').isIn(['DRIVER','DISPATCHER','SUPERVISOR','ADMIN']), body('language').isIn(['EN','ES'])],
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ error:'Validation failed', details:errors.array() });
