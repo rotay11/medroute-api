@@ -4,6 +4,7 @@ const { body, validationResult } = require('express-validator');
 const prisma  = require('../db/client');
 const logger  = require('../utils/logger');
 const { authenticate, requireAdmin, requireSupervisor } = require('../middleware/auth');
+const { sendPatientWelcome } = require('../services/emailService');
 
 const router = express.Router();
 router.use(authenticate);
@@ -115,6 +116,7 @@ router.post('/patients', authenticate, requireAdmin, async (req, res) => {
     const patient = await prisma.patient.create({
       data: { firstName, lastName, email, phone: phone||'', address: address||'', dobHash, portalToken, language: language||'EN' }
     });
+    sendPatientWelcome(patient).catch(() => {});
     return res.status(201).json({ patient, portalLink: '/portal?token=' + portalToken });
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ error: 'A patient with this email already exists' });
