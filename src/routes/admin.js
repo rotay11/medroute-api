@@ -89,4 +89,91 @@ router.post('/app-versions', requireAdmin, async (req, res) => {
   } catch (err) { return res.status(500).json({ error:'Could not publish version' }); }
 });
 
+
+// ── PATIENTS ──────────────────────────────────────────────────────────────────
+
+// List all patients
+router.get('/patients', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const patients = await prisma.patient.findMany({
+      orderBy: { lastName: 'asc' },
+      include: { _count: { select: { packages: true } } }
+    });
+    return res.json({ patients });
+  } catch (err) { return res.status(500).json({ error: 'Could not load patients' }); }
+});
+
+// Create patient
+router.post('/patients', authenticate, requireAdmin, async (req, res) => {
+  const { firstName, lastName, email, phone, address, dob, language } = req.body;
+  if (!firstName || !lastName || !email || !dob) return res.status(400).json({ error: 'First name, last name, email and date of birth are required' });
+  try {
+    const bcrypt = require('bcryptjs');
+    const dobHash = await bcrypt.hash(dob, 10);
+    const { v4: uuidv4 } = require('uuid');
+    const portalToken = uuidv4();
+    const patient = await prisma.patient.create({
+      data: { firstName, lastName, email, phone: phone||'', address: address||'', dobHash, portalToken, language: language||'EN' }
+    });
+    return res.status(201).json({ patient, portalLink: '/portal?token=' + portalToken });
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(409).json({ error: 'A patient with this email already exists' });
+    return res.status(500).json({ error: 'Could not create patient' });
+  }
+});
+
+// Update patient
+router.patch('/patients/:id', authenticate, requireAdmin, async (req, res) => {
+  const { firstName, lastName, email, phone, address, language } = req.body;
+  try {
+    const patient = await prisma.patient.update({
+      where: { id: req.params.id },
+      data: { firstName, lastName, email, phone, address, language }
+    });
+    return res.json({ patient });
+  } catch (err) { return res.status(500).json({ error: 'Could not update patient' }); }
+});
+
+// ── FACILITIES ─────────────────────────────────────────────────────────────────
+
+// List all facilities
+router.get('/facilities', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const facilities = await prisma.facility.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { packages: true } } }
+    });
+    return res.json({ facilities });
+  } catch (err) { return res.status(500).json({ error: 'Could not load facilities' }); }
+});
+
+// Create facility
+router.post('/facilities', authenticate, requireAdmin, async (req, res) => {
+  const { name, email, phone, address, contactPerson, password } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+  try {
+    const bcrypt = require('bcryptjs');
+    const passwordHash = await bcrypt.hash(password, 12);
+    const facility = await prisma.facility.create({
+      data: { name, email, phone: phone||'', address: address||'', contactPerson: contactPerson||'', passwordHash }
+    });
+    return res.status(201).json({ facility });
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(409).json({ error: 'A facility with this email already exists' });
+    return res.status(500).json({ error: 'Could not create facility' });
+  }
+});
+
+// Update facility
+router.patch('/facilities/:id', authenticate, requireAdmin, async (req, res) => {
+  const { name, email, phone, address, contactPerson } = req.body;
+  try {
+    const facility = await prisma.facility.update({
+      where: { id: req.params.id },
+      data: { name, email, phone, address, contactPerson }
+    });
+    return res.json({ facility });
+  } catch (err) { return res.status(500).json({ error: 'Could not update facility' }); }
+});
+
 module.exports = router;
