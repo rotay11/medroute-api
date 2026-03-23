@@ -106,7 +106,7 @@ router.post('/packages/:id/notify-delay', async (req, res) => {
     // Update package with delay reason
     await prisma.package.update({
       where: { id: req.params.id },
-      data: { status: 'DELAYED', notes: reason + (notes ? ' - ' + notes : '') }
+      data: { status: 'DELAYED' }
     });
 
     // Send email notification
