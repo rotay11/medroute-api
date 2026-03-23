@@ -320,4 +320,5 @@ enum DiscrepancyStatus {
   INVESTIGATING
   RESOLVED
   ESCALATED
+  ARCHIVED
 }

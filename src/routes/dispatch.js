@@ -68,4 +68,27 @@ router.get('/alerts', async (req, res) => {
   } catch (err) { return res.status(500).json({ error:'Could not load alerts' }); }
 });
 
+
+// Resolve an alert
+router.patch('/alerts/:id/resolve', async (req, res) => {
+  try {
+    const alert = await prisma.discrepancy.update({
+      where: { id: req.params.id },
+      data: { status: 'RESOLVED', resolvedAt: new Date(), resolvedBy: req.driver?.id || null }
+    });
+    return res.json({ alert });
+  } catch (err) { return res.status(500).json({ error: 'Could not resolve alert' }); }
+});
+
+// Archive an alert
+router.patch('/alerts/:id/archive', async (req, res) => {
+  try {
+    const alert = await prisma.discrepancy.update({
+      where: { id: req.params.id },
+      data: { status: 'ARCHIVED' }
+    });
+    return res.json({ alert });
+  } catch (err) { return res.status(500).json({ error: 'Could not archive alert' }); }
+});
+
 module.exports = router;
