@@ -289,6 +289,7 @@ enum PackageStatus {
   DELIVERED
   FAILED
   RETURNED
+  DELAYED
 }
 
 enum BundleStatus {

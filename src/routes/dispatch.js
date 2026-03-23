@@ -91,4 +91,47 @@ router.patch('/alerts/:id/archive', async (req, res) => {
   } catch (err) { return res.status(500).json({ error: 'Could not archive alert' }); }
 });
 
+
+// Send delay notification to patient
+router.post('/packages/:id/notify-delay', async (req, res) => {
+  const { reason, notes } = req.body;
+  if (!reason) return res.status(400).json({ error: 'Reason is required' });
+  try {
+    const pkg = await prisma.package.findUnique({
+      where: { id: req.params.id },
+      include: { patient: true, facility: true }
+    });
+    if (!pkg) return res.status(404).json({ error: 'Package not found' });
+
+    // Update package with delay reason
+    await prisma.package.update({
+      where: { id: req.params.id },
+      data: { status: 'DELAYED', notes: reason + (notes ? ' - ' + notes : '') }
+    });
+
+    // Send email notification
+    const { sendDelayNotification } = require('../services/emailService');
+    if (pkg.patient?.email) {
+      await sendDelayNotification(pkg.patient, pkg, reason, notes);
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.driver?.id || null,
+        actorType: 'dispatcher',
+        action: 'DELAY_NOTIFICATION_SENT',
+        entityType: 'package',
+        entityId: pkg.id,
+        ipAddress: req.ip,
+        metadata: { reason, notes, patientEmail: pkg.patient?.email }
+      }
+    });
+
+    return res.json({ success: true, message: 'Delay notification sent' });
+  } catch (err) {
+    console.error('Delay notification error:', err);
+    return res.status(500).json({ error: 'Could not send notification' });
+  }
+});
+
 module.exports = router;
