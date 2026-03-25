@@ -12,7 +12,7 @@ router.post('/',
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ error:'Invalid delivery data' });
-    const { bundleId, gpsLat, gpsLng, scannedRxIds, signatureBase64, photoBase64, recipientName, notes } = req.body;
+    const { bundleId, gpsLat, gpsLng, scannedRxIds, signatureBase64, photoBase64, recipientName, notes, refused } = req.body;
     try {
       const bundle = await prisma.bundle.findFirst({
         where: { id:bundleId, driverId:req.driver.id },
