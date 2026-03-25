@@ -314,6 +314,8 @@ enum DiscrepancyType {
   WRONG_ADDRESS
   SEAL_BROKEN
   OUT_OF_ORDER
+  UNSIGNED_DELIVERY
+  REFUSED_DELIVERY
 }
 
 enum DiscrepancyStatus {
