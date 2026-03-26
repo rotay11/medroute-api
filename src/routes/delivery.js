@@ -53,6 +53,13 @@ router.post('/',
         orderBy: { stopOrder:'asc' },
       });
 
+        if (refused) {
+          await prisma.discrepancy.create({ data: { driverId: req.driver.id, packageId: bundle.packages[0]?.id || null, type: 'REFUSED_DELIVERY', description: `Patient at ${bundle.address} refused delivery`, status: 'OPEN' } });
+        }
+        if (!refused && (!recipientName || recipientName.trim() === '')) {
+          await prisma.discrepancy.create({ data: { driverId: req.driver.id, packageId: bundle.packages[0]?.id || null, type: 'UNSIGNED_DELIVERY', description: `Unsigned delivery at ${bundle.address}`, status: 'OPEN' } });
+        }
+
       logger.info(`Delivery confirmed: ${bundleId} by ${req.driver.driverId}`);
       return res.json({
         success:true,
