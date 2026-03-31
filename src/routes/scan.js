@@ -39,26 +39,42 @@ router.post('/',
 
       // Auto-create bundle if package has no bundle yet
       if (!pkg.bundle) {
-        const pharmacy = await prisma.pharmacy.findFirst();
-        const existingBundles = await prisma.bundle.findMany({
-          where: { driverId, status: { in: ['ASSIGNED', 'IN_TRANSIT'] } },
-          orderBy: { stopOrder: 'desc' },
-          take: 1
-        });
-        const nextStop = existingBundles.length > 0 ? existingBundles[0].stopOrder + 1 : 1;
-        const newBundle = await prisma.bundle.create({
-          data: {
+        // Check if patient already has a bundle for this driver
+        const existingPatientBundle = await prisma.bundle.findFirst({
+          where: {
+            driverId,
             patientId: pkg.patientId,
-            address: pkg.patient.address || 'Unknown address',
-            driver: { connect: { id: driverId } },
-            stopOrder: nextStop,
-            status: 'ASSIGNED',
+            status: { in: ['ASSIGNED', 'IN_TRANSIT'] }
           }
         });
-        await prisma.package.update({ where: { id: pkg.id }, data: { bundleId: newBundle.id } });
-        pkg.bundle = { id: newBundle.id, driverId, stopOrder: nextStop, address: newBundle.address };
-        pkg.bundleId = newBundle.id;
-        logger.info(`Auto-created bundle for RX ${rxId} assigned to driver ${req.driver.driverId}`);
+
+        if (existingPatientBundle) {
+          // Add package to existing bundle
+          await prisma.package.update({ where: { id: pkg.id }, data: { bundleId: existingPatientBundle.id } });
+          pkg.bundle = { id: existingPatientBundle.id, driverId, stopOrder: existingPatientBundle.stopOrder, address: existingPatientBundle.address };
+          pkg.bundleId = existingPatientBundle.id;
+          logger.info(`Added RX ${rxId} to existing bundle for patient ${pkg.patientId}`);
+        } else {
+          // Create new bundle for this patient
+          const lastBundle = await prisma.bundle.findFirst({
+            where: { driverId, status: { in: ['ASSIGNED', 'IN_TRANSIT'] } },
+            orderBy: { stopOrder: 'desc' }
+          });
+          const nextStop = lastBundle ? lastBundle.stopOrder + 1 : 1;
+          const newBundle = await prisma.bundle.create({
+            data: {
+              patientId: pkg.patientId,
+              address: pkg.patient.address || 'Unknown address',
+              driver: { connect: { id: driverId } },
+              stopOrder: nextStop,
+              status: 'ASSIGNED',
+            }
+          });
+          await prisma.package.update({ where: { id: pkg.id }, data: { bundleId: newBundle.id } });
+          pkg.bundle = { id: newBundle.id, driverId, stopOrder: nextStop, address: newBundle.address };
+          pkg.bundleId = newBundle.id;
+          logger.info(`Auto-created bundle for RX ${rxId} assigned to driver ${req.driver.driverId}`);
+        }
       }
 
       if (pkg.bundle && pkg.bundle.driverId !== driverId) {
