@@ -19,6 +19,7 @@ model Driver {
   language      Language     @default(EN)
   mapsLanguage  Language     @default(EN)
   zone          String
+  zipCodes      String   @default("")
   pharmacyId    String?
   shiftType     String       @default("Morning")
   status        DriverStatus @default(OFFLINE)

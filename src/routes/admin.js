@@ -31,7 +31,7 @@ router.post('/drivers', requireAdmin,
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ error:'Validation failed', details:errors.array() });
-    const { firstName, lastName, email, phone, role, language, mapsLanguage, zone, pharmacyId, shiftType } = req.body;
+    const { firstName, lastName, email, phone, role, language, mapsLanguage, zone, zipCodes, pharmacyId, shiftType } = req.body;
     try {
       const existing = await prisma.driver.findUnique({ where:{ email } });
       if (existing) return res.status(409).json({ error:'Email already registered' });
@@ -40,7 +40,7 @@ router.post('/drivers', requireAdmin,
       const chars    = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
       const tempPass = Array.from({ length:12 }, ()=>chars[Math.floor(Math.random()*chars.length)]).join('');
       const hash     = await bcrypt.hash(tempPass, 12);
-      const driver   = await prisma.driver.create({ data:{ driverId, firstName, lastName, email, passwordHash:hash, phone, role, language, mapsLanguage:mapsLanguage||language, zone:zone||'Unassigned', pharmacyId:pharmacyId||null, shiftType:shiftType||'Morning · 7 AM – 3 PM', status:'OFFLINE' } });
+      const driver   = await prisma.driver.create({ data:{ driverId, firstName, lastName, email, passwordHash:hash, phone, role, language, mapsLanguage:mapsLanguage||language, zone:zone||'Unassigned', zipCodes:zipCodes||'', pharmacyId:pharmacyId||null, shiftType:shiftType||'Morning · 7 AM – 3 PM', status:'OFFLINE' } });
       await prisma.auditLog.create({ data:{ actorId:req.driver.id, actorType:'admin', action:'DRIVER_CREATED', entityType:'driver', entityId:driver.id, ipAddress:req.ip, metadata:{ driverId, email, role, language } } });
       logger.info(`Driver created: ${driverId}`);
       return res.status(201).json({ driver:{ id:driver.id, driverId, firstName, lastName, email, role, language, zone }, tempPassword:tempPass, message:`Driver created. Temp password: ${tempPass}` });
@@ -49,7 +49,7 @@ router.post('/drivers', requireAdmin,
 );
 
 router.patch('/drivers/:id', requireSupervisor, async (req, res) => {
-  const fields = ['firstName','lastName','phone','role','language','mapsLanguage','zone','status','pharmacyId','shiftType'];
+  const fields = ['firstName','lastName','phone','role','language','mapsLanguage','zone','zipCodes','status','pharmacyId','shiftType'];
   const data = {};
   fields.forEach(f => { if (req.body[f] !== undefined) data[f] = req.body[f]; });
   try {

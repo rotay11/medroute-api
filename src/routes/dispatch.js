@@ -10,7 +10,7 @@ router.get('/drivers', async (req, res) => {
     const drivers = await prisma.driver.findMany({
       where: {},
       select: {
-        id:true, driverId:true, firstName:true, lastName:true, status:true, zone:true, language:true, role:true,
+        id:true, driverId:true, firstName:true, lastName:true, status:true, zone:true, zipCodes:true, language:true, role:true,
         gpsPings: { orderBy:{ timestamp:'desc' }, take:1, select:{ lat:true, lng:true, timestamp:true } },
         bundles: { where:{ status:{ in:['ASSIGNED','IN_TRANSIT'] } }, include:{ packages:{ select:{ rxId:true, status:true, urgent:true } } }, orderBy:{ stopOrder:'asc' } },
         _count: { select:{ deliveries:true, discrepancies:true } },
