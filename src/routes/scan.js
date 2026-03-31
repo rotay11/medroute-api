@@ -50,7 +50,7 @@ router.post('/',
           data: {
             patientId: pkg.patientId,
             address: pkg.patient.address || 'Unknown address',
-            driverId,
+            driver: { connect: { id: driverId } },
             stopOrder: nextStop,
             status: 'ASSIGNED',
             pharmacyId: pharmacy?.id || null,
