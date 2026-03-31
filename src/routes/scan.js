@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const prisma  = require('../db/client');
 const logger  = require('../utils/logger');
 const { authenticate } = require('../middleware/auth');
+const { extractZipCode } = require('../services/zoneService');
 
 const router = express.Router();
 router.use(authenticate);
@@ -34,6 +35,31 @@ router.post('/',
         const io = req.app.get('io');
         if (io) io.to('dispatchers').emit('alert', { type:'SCAN_MISMATCH', severity:'HIGH', message:`${req.driver.firstName} scanned unknown ID: ${rxId}`, driverId, gpsLat, gpsLng, timestamp:new Date() });
         return res.status(404).json({ error:'Package not found on manifest', code:'ITEM_NOT_ON_MANIFEST', rxId });
+      }
+
+      // Auto-create bundle if package has no bundle yet
+      if (!pkg.bundle) {
+        const pharmacy = await prisma.pharmacy.findFirst();
+        const existingBundles = await prisma.bundle.findMany({
+          where: { driverId, status: { in: ['ASSIGNED', 'IN_TRANSIT'] } },
+          orderBy: { stopOrder: 'desc' },
+          take: 1
+        });
+        const nextStop = existingBundles.length > 0 ? existingBundles[0].stopOrder + 1 : 1;
+        const newBundle = await prisma.bundle.create({
+          data: {
+            patientId: pkg.patientId,
+            address: pkg.patient.address || 'Unknown address',
+            driverId,
+            stopOrder: nextStop,
+            status: 'ASSIGNED',
+            pharmacyId: pharmacy?.id || null,
+          }
+        });
+        await prisma.package.update({ where: { id: pkg.id }, data: { bundleId: newBundle.id } });
+        pkg.bundle = { id: newBundle.id, driverId, stopOrder: nextStop, address: newBundle.address };
+        pkg.bundleId = newBundle.id;
+        logger.info(`Auto-created bundle for RX ${rxId} assigned to driver ${req.driver.driverId}`);
       }
 
       if (pkg.bundle && pkg.bundle.driverId !== driverId) {
@@ -83,6 +109,49 @@ router.get('/manifest', async (req, res) => {
     const scanned = bundles.reduce((s,b) => s+b.packages.filter(p=>p.scans.some(sc=>sc.scanType==='PICKUP')).length, 0);
     return res.json({ bundles, summary:{ totalBundles:bundles.length, totalPackages:total, scannedPackages:scanned, remaining:total-scanned, allScanned:scanned>=total } });
   } catch (err) { return res.status(500).json({ error:'Could not load manifest' }); }
+});
+
+
+// Get optimized route for driver
+router.get('/route', async (req, res) => {
+  try {
+    const bundles = await prisma.bundle.findMany({
+      where: { driverId: req.driver.id, status: { in: ['ASSIGNED', 'IN_TRANSIT'] } },
+      include: {
+        packages: {
+          include: {
+            patient: { select: { firstName:true, lastName:true, phone:true, address:true } },
+            scans: { select: { scanType:true, timestamp:true } }
+          },
+          orderBy: { urgent: 'desc' }
+        }
+      },
+      orderBy: { stopOrder: 'asc' }
+    });
+
+    // Separate urgent from normal
+    const urgent = bundles.filter(b => b.packages.some(p => p.urgent));
+    const normal = bundles.filter(b => !b.packages.some(p => p.urgent));
+    const optimized = [...urgent, ...normal];
+
+    const total = bundles.reduce((s,b) => s + b.packages.length, 0);
+    const scanned = bundles.reduce((s,b) => s + b.packages.filter(p => 
+      p.scans.some(sc => sc.scanType === 'PICKUP')).length, 0);
+
+    return res.json({
+      bundles: optimized,
+      summary: {
+        totalStops: bundles.length,
+        totalPackages: total,
+        scannedPackages: scanned,
+        remaining: total - scanned,
+        allScanned: total > 0 && scanned >= total
+      }
+    });
+  } catch (err) {
+    logger.error('Route fetch error:', err);
+    return res.status(500).json({ error: 'Could not load route' });
+  }
 });
 
 module.exports = router;
