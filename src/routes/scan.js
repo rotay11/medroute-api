@@ -53,7 +53,6 @@ router.post('/',
             driver: { connect: { id: driverId } },
             stopOrder: nextStop,
             status: 'ASSIGNED',
-            pharmacyId: pharmacy?.id || null,
           }
         });
         await prisma.package.update({ where: { id: pkg.id }, data: { bundleId: newBundle.id } });
