@@ -26,19 +26,19 @@ router.post('/parse', async (req, res) => {
           },
           {
             type: 'text',
-            text: `This is a pharmacy delivery manifest. Extract the following information and return ONLY a JSON object with no other text:
+            text: `This is a Clayworth Pharmacy delivery manifest. The patient name appears in ALL CAPS at the top left of the page directly below the pharmacy address block. The delivery address appears directly below the patient name. Extract the following and return ONLY a valid JSON object with no markdown, no code blocks, no extra text:
 {
-  "patientName": "full name from top of manifest",
-  "firstName": "first name only",
-  "lastName": "last name only",
-  "address": "full street address",
-  "city": "city",
-  "state": "state abbreviation",
-  "zip": "zip code",
-  "phone": "phone number",
-  "rxNumber": "RX number (format: digits-digits)",
-  "medication": "medication name and strength",
-  "quantity": "quantity",
+  "patientName": "full patient name in caps near top left",
+  "firstName": "first word of patient name",
+  "lastName": "last word of patient name",
+  "address": "street address below patient name",
+  "city": "city name",
+  "state": "2 letter state code",
+  "zip": "5 digit zip code",
+  "phone": "phone number near address",
+  "rxNumber": "RX number after Rx label eg 4548967-00",
+  "medication": "drug name and strength on manifest",
+  "quantity": "quantity number",
   "fillDate": "fill date",
   "doctor": "doctor name"
 }`
