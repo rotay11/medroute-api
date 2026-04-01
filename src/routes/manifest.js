@@ -47,7 +47,9 @@ router.post('/parse', async (req, res) => {
       }]
     });
 
-    const text = response.content[0].text.trim();
+    let text = response.content[0].text.trim();
+    // Remove markdown code blocks if present
+    text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(text);
     return res.json({ success: true, data: parsed });
   } catch (err) {
