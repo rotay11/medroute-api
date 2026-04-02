@@ -31,6 +31,100 @@ router.post('/facility/login', async (req, res) => {
   } catch (err) { return res.status(500).json({ error:'Login failed' }); }
 });
 
+
+// Get all facilities for dropdown
+router.get('/facilities', async (req, res) => {
+  try {
+    const facilities = await prisma.facility.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' }
+    });
+    return res.json({ facilities });
+  } catch (err) { return res.status(500).json({ error: 'Could not load facilities' }); }
+});
+
+// Caregiver/facility lookup by patient name and DOB
+router.post('/caregiver/lookup', async (req, res) => {
+  const { facilityId, firstName, lastName, dob } = req.body;
+  if (!facilityId || !firstName || !lastName || !dob) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
+  try {
+    // Find patient by name
+    const patients = await prisma.patient.findMany({
+      where: {
+        firstName: { equals: firstName, mode: 'insensitive' },
+        lastName: { equals: lastName, mode: 'insensitive' }
+      }
+    });
+
+    if (!patients.length) {
+      return res.status(404).json({ error: 'Patient not found. Contact Clayworth Pharmacy at (510) 537-9402.' });
+    }
+
+    // Verify date of birth
+    let patient = null;
+    for (const p of patients) {
+      const ok = await bcrypt.compare(dob, p.dobHash);
+      if (ok) { patient = p; break; }
+    }
+
+    if (!patient) {
+      return res.status(401).json({ error: 'Date of birth does not match. Contact Clayworth Pharmacy at (510) 537-9402.' });
+    }
+
+    // Get delivery status only - no medication names
+    const packages = await prisma.package.findMany({
+      where: { patientId: patient.id },
+      include: {
+        bundle: {
+          select: {
+            status: true,
+            eta: true,
+            etaMinutes: true,
+            driver: {
+              select: {
+                firstName: true,
+                gpsPings: {
+                  orderBy: { timestamp: 'desc' },
+                  take: 1,
+                  select: { timestamp: true }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Return minimal information only
+    const activePackages = packages.filter(p => p.status !== 'DELIVERED');
+    const deliveredPackages = packages.filter(p => p.status === 'DELIVERED');
+
+    return res.json({
+      patient: {
+        firstName: patient.firstName,
+        lastInitial: patient.lastName.charAt(0)
+      },
+      delivery: {
+        itemCount: activePackages.length,
+        status: activePackages[0]?.bundle?.status || 'PENDING',
+        driverName: activePackages[0]?.bundle?.driver?.firstName || null,
+        eta: activePackages[0]?.bundle?.eta || null,
+        etaMinutes: activePackages[0]?.bundle?.etaMinutes || null,
+        lastUpdate: activePackages[0]?.bundle?.driver?.gpsPings?.[0]?.timestamp || null,
+        deliveredCount: deliveredPackages.length,
+        totalItems: packages.length
+      },
+      pharmacyPhone: '(510) 537-9402'
+    });
+  } catch (err) {
+    console.error('Caregiver lookup error:', err.message);
+    return res.status(500).json({ error: 'Lookup failed. Contact Clayworth Pharmacy at (510) 537-9402.' });
+  }
+});
+
 // Patient tracking — uses portalToken (no session required — link-based auth)
 router.get('/patient/:portalToken/packages', async (req, res) => {
   try {
