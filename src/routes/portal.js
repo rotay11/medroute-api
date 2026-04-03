@@ -45,7 +45,7 @@ router.get('/facilities', async (req, res) => {
 
 // Caregiver/facility lookup by patient name and DOB
 router.post('/caregiver/lookup', async (req, res) => {
-  const { facilityId, firstName, lastName, dob } = req.body;
+  const { facilityId, firstName, lastName, dob, role, showMeds } = req.body;
   if (!facilityId || !firstName || !lastName || !dob) {
     return res.status(400).json({ error: 'All fields are required' });
   }
@@ -107,6 +107,7 @@ router.post('/caregiver/lookup', async (req, res) => {
         firstName: patient.firstName,
         lastInitial: patient.lastName.charAt(0)
       },
+      role: role || 'family',
       delivery: {
         itemCount: activePackages.length,
         status: activePackages[0]?.bundle?.status || 'PENDING',
@@ -117,6 +118,7 @@ router.post('/caregiver/lookup', async (req, res) => {
         deliveredCount: deliveredPackages.length,
         totalItems: packages.length
       },
+      medications: showMeds ? activePackages.map(p => ({ medication: p.medication, dosage: p.dosage || '' })) : null,
       pharmacyPhone: '(510) 537-9402'
     });
   } catch (err) {
