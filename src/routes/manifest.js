@@ -220,10 +220,9 @@ router.post('/create-delivery', async (req, res) => {
       data: {
         patientId: patient.id,
         address,
-        driverId: req.driver.id,
+        driver: { connect: { id: req.driver.id } },
         stopOrder,
         status: 'ASSIGNED',
-        pharmacyId: pharmacy?.id || null,
       }
     });
 
