@@ -92,7 +92,7 @@ async function main() {
       id: 'patient-001', firstName: 'Rajesh', lastName: 'Patel',
       dobHash, email: 'rajesh.patel@email.com',
       phone: '(212) 555-1001',
-      address: '412 W 76th St, Apt 3B, New York, NY 10023',
+      address: '2000 Mowry Ave, Fremont, CA 94538',
       addressLat: 40.7780, addressLng: -73.9832, language: 'EN',
     },
   });
@@ -104,7 +104,7 @@ async function main() {
       id: 'patient-002', firstName: 'Maria', lastName: 'Torres',
       dobHash, email: 'maria.torres@email.com',
       phone: '(212) 555-1002',
-      address: '881 Amsterdam Ave, Apt 7C, New York, NY 10025',
+      address: '19900 Hesperian Blvd, Hayward, CA 94541',
       addressLat: 40.7948, addressLng: -73.9666, language: 'ES',
     },
   });
@@ -116,7 +116,7 @@ async function main() {
       id: 'patient-003', firstName: 'Harold', lastName: 'Brooks',
       dobHash, email: 'harold.brooks@email.com',
       phone: '(212) 555-1003',
-      address: '340 Riverside Dr, Apt 4F, New York, NY 10025',
+      address: '39399 Cherry St, Newark, CA 94560',
       addressLat: 40.8019, addressLng: -73.9698, language: 'EN',
     },
   });
