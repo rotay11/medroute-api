@@ -84,3 +84,24 @@ router.post('/logout', authenticate, async (req, res) => {
 router.get('/me', authenticate, (req, res) => res.json({ driver: req.driver }));
 
 module.exports = router;
+
+// Change password
+router.post('/change-password', authenticate, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current and new password required' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  }
+  try {
+    const driver = await prisma.driver.findUnique({ where: { id: req.driver.id } });
+    const ok = await bcrypt.compare(currentPassword, driver.passwordHash);
+    if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
+    const hash = await bcrypt.hash(newPassword, 10);
+    await prisma.driver.update({ where: { id: req.driver.id }, data: { passwordHash: hash } });
+    return res.json({ success: true, message: 'Password changed successfully' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Could not change password' });
+  }
+});
