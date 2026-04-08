@@ -135,3 +135,25 @@ router.post('/packages/:id/notify-delay', async (req, res) => {
 });
 
 module.exports = router;
+
+// Clear a driver's route — reset all undelivered bundles to PENDING
+router.post('/drivers/:id/clear-route', async (req, res) => {
+  try {
+    const driverId = req.params.id;
+    const bundles = await prisma.bundle.findMany({
+      where: { driverId, status: { not: 'DELIVERED' } }
+    });
+    await prisma.bundle.updateMany({
+      where: { driverId, status: { not: 'DELIVERED' } },
+      data: { driverId: null, status: 'PENDING', stopOrder: 0 }
+    });
+    await prisma.package.updateMany({
+      where: { bundle: { driverId } },
+      data: { status: 'PENDING' }
+    });
+    return res.json({ success: true, cleared: bundles.length });
+  } catch (err) {
+    console.error('Clear route error:', err.message);
+    return res.status(500).json({ error: 'Could not clear route' });
+  }
+});
