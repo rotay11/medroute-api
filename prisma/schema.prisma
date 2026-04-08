@@ -13,7 +13,8 @@ model Driver {
   firstName     String
   lastName      String
   email         String       @unique
-  passwordHash  String
+  passwordHash          String
+  forcePasswordChange   Boolean  @default(false)
   phone         String
   role          Role         @default(DRIVER)
   language      Language     @default(EN)

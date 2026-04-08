@@ -99,7 +99,7 @@ router.post('/change-password', authenticate, async (req, res) => {
     const ok = await bcrypt.compare(currentPassword, driver.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
     const hash = await bcrypt.hash(newPassword, 10);
-    await prisma.driver.update({ where: { id: req.driver.id }, data: { passwordHash: hash } });
+    await prisma.driver.update({ where: { id: req.driver.id }, data: { passwordHash: hash, forcePasswordChange: false } });
     return res.json({ success: true, message: 'Password changed successfully' });
   } catch (err) {
     return res.status(500).json({ error: 'Could not change password' });

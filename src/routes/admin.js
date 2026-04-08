@@ -43,6 +43,7 @@ router.post('/drivers', requireAdmin,
       const driver   = await prisma.driver.create({ data:{ driverId, firstName, lastName, email, passwordHash:hash, phone, role, language, mapsLanguage:mapsLanguage||language, zone:zone||'Unassigned', zipCodes:zipCodes||'', pharmacyId:pharmacyId||null, shiftType:shiftType||'Morning · 7 AM – 3 PM', status:'OFFLINE' } });
       await prisma.auditLog.create({ data:{ actorId:req.driver.id, actorType:'admin', action:'DRIVER_CREATED', entityType:'driver', entityId:driver.id, ipAddress:req.ip, metadata:{ driverId, email, role, language } } });
       logger.info(`Driver created: ${driverId}`);
+      await prisma.driver.update({ where: { id: driver.id }, data: { forcePasswordChange: true } });
       return res.status(201).json({ driver:{ id:driver.id, driverId, firstName, lastName, email, role, language, zone }, tempPassword:tempPass, message:`Driver created. Temp password: ${tempPass}` });
     } catch (err) { return res.status(500).json({ error:'Could not create driver' }); }
   }
