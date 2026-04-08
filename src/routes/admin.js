@@ -180,3 +180,20 @@ router.patch('/facilities/:id', authenticate, requireAdmin, async (req, res) => 
 });
 
 module.exports = router;
+
+// Delete patient
+router.delete('/patients/:id', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const patientId = req.params.id;
+    // Delete related records first
+    await prisma.delivery.deleteMany({ where: { bundle: { patientId } } });
+    await prisma.scan.deleteMany({ where: { package: { patientId } } });
+    await prisma.package.deleteMany({ where: { patientId } });
+    await prisma.bundle.deleteMany({ where: { patientId } });
+    await prisma.patient.delete({ where: { id: patientId } });
+    return res.json({ success: true, message: 'Patient deleted' });
+  } catch (err) {
+    console.error('Delete patient error:', err.message);
+    return res.status(500).json({ error: 'Could not delete patient' });
+  }
+});
