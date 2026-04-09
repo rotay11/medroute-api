@@ -68,6 +68,11 @@ model Pharmacy {
   lng      Float
   phone    String?
   zone     String
+  faxNumber     String?
+  licenseNumber String?
+  licenseState  String?
+  website       String?
+  logoUrl       String?
 
   drivers  Driver[]
   packages Package[]
