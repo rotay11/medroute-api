@@ -105,3 +105,25 @@ router.post('/change-password', authenticate, async (req, res) => {
     return res.status(500).json({ error: 'Could not change password' });
   }
 });
+
+// Get pharmacy info — public endpoint for portal and app branding
+router.get('/pharmacy', async (req, res) => {
+  try {
+    const pharmacy = await prisma.pharmacy.findFirst({
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        faxNumber: true,
+        licenseNumber: true,
+        licenseState: true,
+        website: true,
+        logoUrl: true
+      }
+    });
+    return res.json({ pharmacy });
+  } catch (err) {
+    return res.status(500).json({ error: 'Could not load pharmacy info' });
+  }
+});
