@@ -130,9 +130,18 @@ router.post('/parse', async (req, res) => {
   "state": "2 letter state code",
   "zip": "5 digit zip code",
   "phone": "phone number near address",
-  "rxNumber": "RX number after Rx label eg 4548967-00",
-  "medication": "drug name and strength on manifest",
-  "quantity": "quantity number",
+  "medications": [
+    {
+      "rxNumber": "first RX number eg 6850788-00",
+      "medication": "drug name and strength",
+      "quantity": "quantity number"
+    },
+    {
+      "rxNumber": "second RX number if present",
+      "medication": "drug name and strength",
+      "quantity": "quantity number"
+    }
+  ],
   "fillDate": "fill date",
   "doctor": "doctor name"
 }`
@@ -154,9 +163,16 @@ router.post('/parse', async (req, res) => {
 
 // Create patient and package from manifest data
 router.post('/create-delivery', async (req, res) => {
-  const { firstName, lastName, email, phone, address, dob, rxNumber, medication, quantity, driverId } = req.body;
-  if (!firstName || !lastName || !address || !rxNumber) {
-    return res.status(400).json({ error: 'Patient name, address and RX number are required' });
+  const { firstName, lastName, email, phone, address, dob, rxNumber, medication, quantity, medications, driverId } = req.body;
+  if (!firstName || !lastName || !address) {
+    return res.status(400).json({ error: 'Patient name and address are required' });
+  }
+  // Support both single rxNumber and array of medications
+  const medList = medications && medications.length > 0 
+    ? medications 
+    : [{ rxNumber, medication, quantity }];
+  if (!medList[0].rxNumber) {
+    return res.status(400).json({ error: 'At least one RX number is required' });
   }
 
   try {
@@ -185,28 +201,37 @@ router.post('/create-delivery', async (req, res) => {
       });
     }
 
-    // Check if RX already exists
-    const existing = await prisma.package.findFirst({ where: { rxId: rxNumber } });
-    if (existing) {
-      return res.status(409).json({ error: 'RX already in system', package: existing });
-    }
-
     // Get pharmacy
     const pharmacy = await prisma.pharmacy.findFirst();
 
-    // Create package
-    const pkg = await prisma.package.create({
-      data: {
-        rxId: rxNumber,
-        medication: medication || 'Unknown',
-        dosage: '',
-        quantity: quantity || '1',
-        patientId: patient.id,
-        pharmacyId: pharmacy?.id || null,
-        status: 'PENDING',
-        urgent: false,
+    // Create all packages from medList
+    const createdPackages = [];
+    const skippedPackages = [];
+    for (const med of medList) {
+      if (!med.rxNumber) continue;
+      const existing = await prisma.package.findFirst({ where: { rxId: med.rxNumber } });
+      if (existing) {
+        skippedPackages.push(med.rxNumber);
+        continue;
       }
-    });
+      const pkg = await prisma.package.create({
+        data: {
+          rxId: med.rxNumber,
+          medication: med.medication || 'Unknown',
+          dosage: '',
+          quantity: med.quantity || '1',
+          patientId: patient.id,
+          pharmacyId: pharmacy?.id || null,
+          status: 'PENDING',
+          urgent: false,
+        }
+      });
+      createdPackages.push(pkg);
+    }
+
+    if (createdPackages.length === 0) {
+      return res.status(409).json({ error: 'All RX numbers already in system', skipped: skippedPackages });
+    }
 
     // Find or create bundle for this driver
     const driver = await prisma.driver.findUnique({ where: { id: req.driver.id } });
@@ -226,18 +251,21 @@ router.post('/create-delivery', async (req, res) => {
       }
     });
 
-    // Link package to bundle
-    await prisma.package.update({
-      where: { id: pkg.id },
-      data: { bundleId: bundle.id }
-    });
+    // Link all packages to bundle
+    for (const pkg of createdPackages) {
+      await prisma.package.update({
+        where: { id: pkg.id },
+        data: { bundleId: bundle.id }
+      });
+    }
 
     return res.status(201).json({
       success: true,
       patient,
-      package: pkg,
+      packages: createdPackages,
+      skipped: skippedPackages,
       bundle,
-      message: 'Patient and delivery created successfully'
+      message: `Patient and ${createdPackages.length} delivery item(s) created successfully`
     });
   } catch (err) {
     console.error('Create delivery error:', err.message);

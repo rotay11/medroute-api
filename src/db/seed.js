@@ -124,7 +124,7 @@ async function main() {
 
   const bundleA = await prisma.bundle.upsert({
     where: { id: 'bundle-a-001' },
-    update: {},
+    update: { driverId: driver1.id, status: 'ASSIGNED', stopOrder: 1 },
     create: {
       id: 'bundle-a-001', patientId: patient1.id,
       address: patient1.address, addressLat: patient1.addressLat, addressLng: patient1.addressLng,
@@ -144,7 +144,7 @@ async function main() {
 
   const bundleB = await prisma.bundle.upsert({
     where: { id: 'bundle-b-001' },
-    update: {},
+    update: { driverId: driver1.id, status: 'ASSIGNED', stopOrder: 2 },
     create: {
       id: 'bundle-b-001', patientId: patient2.id,
       address: patient2.address, addressLat: patient2.addressLat, addressLng: patient2.addressLng,
@@ -159,7 +159,7 @@ async function main() {
 
   const bundleC = await prisma.bundle.upsert({
     where: { id: 'bundle-c-001' },
-    update: {},
+    update: { driverId: driver1.id, status: 'ASSIGNED', stopOrder: 3 },
     create: {
       id: 'bundle-c-001', patientId: patient3.id,
       address: patient3.address, addressLat: patient3.addressLat, addressLng: patient3.addressLng,
