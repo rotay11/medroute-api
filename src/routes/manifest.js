@@ -120,31 +120,31 @@ router.post('/parse', async (req, res) => {
           },
           {
             type: 'text',
-            text: `This is a Clayworth Pharmacy delivery manifest. The patient name appears in ALL CAPS at the top left of the page directly below the pharmacy address block. The delivery address appears directly below the patient name. Extract the following and return ONLY a valid JSON object with no markdown, no code blocks, no extra text:
+            text: `This is a Clayworth Pharmacy delivery manifest. Extract ALL information and return ONLY a valid JSON object with no markdown, no code blocks, no extra text.
+
+CRITICAL INSTRUCTIONS:
+- Patient name is in ALL CAPS near top left below pharmacy address
+- Extract EVERY SINGLE medication line - there may be 1 to 10 or more
+- Each medication has a barcode above it, then Rx NUMBER, then drug name
+- Look for ALL lines starting with "Rx" followed by numbers
+- The manifest shows "No. of Rx's = N" at the bottom - extract exactly that many medications
+
 {
-  "patientName": "full patient name in caps near top left",
-  "firstName": "first word of patient name",
-  "lastName": "last word of patient name",
-  "address": "street address below patient name",
-  "city": "city name",
-  "state": "2 letter state code",
-  "zip": "5 digit zip code",
-  "phone": "phone number near address",
+  "firstName": "first name from ALL CAPS patient name",
+  "lastName": "last name from ALL CAPS patient name",
+  "address": "street address",
+  "city": "city",
+  "state": "2 letter state",
+  "zip": "5 digit zip",
+  "phone": "phone number",
   "medications": [
-    {
-      "rxNumber": "first RX number eg 6850788-00",
-      "medication": "drug name and strength",
-      "quantity": "quantity number"
-    },
-    {
-      "rxNumber": "second RX number if present",
-      "medication": "drug name and strength",
-      "quantity": "quantity number"
-    }
+    { "rxNumber": "exact Rx number eg 6850788-00", "medication": "full drug name and strength", "quantity": "quantity" },
+    { "rxNumber": "next Rx number", "medication": "drug name", "quantity": "quantity" }
   ],
-  "fillDate": "fill date",
-  "doctor": "doctor name"
-}`
+  "totalRxCount": "number from No. of Rxs line"
+}
+
+Extract ALL medications - do not stop after 1 or 2. If the manifest shows 5 medications extract all 5.`
           }
         ]
       }]
