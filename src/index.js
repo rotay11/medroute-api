@@ -44,6 +44,8 @@ app.use('/api/dispatch', require('./routes/dispatch'));
 app.use('/api/admin',    require('./routes/admin'));
 app.use('/api/portal',   require('./routes/portal'));
 app.use('/api/manifest', require('./routes/manifest'));
+app.use('/api/register', require('./routes/register'));
+app.use('/api/superadmin', require('./routes/superadmin'));
 
 app.use((req, res) => res.status(404).json({ error:'Route not found' }));
 app.use((err, req, res, next) => {

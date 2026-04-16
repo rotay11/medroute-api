@@ -74,10 +74,37 @@ model Pharmacy {
   website       String?
   logoUrl       String?
 
-  drivers  Driver[]
-  packages Package[]
+  plan              String    @default("BASIC")
+  status            String    @default("TRIAL")
+  stripeCustomerId  String?
+  trialEndsAt       DateTime?
+  createdAt         DateTime  @default(now())
+
+  drivers       Driver[]
+  packages      Package[]
+  patients      Patient[]
+  facilities    Facility[]
+  bundles       Bundle[]
+  subscription  Subscription?
 
   @@map("pharmacies")
+}
+
+model Subscription {
+  id                     String   @id @default(uuid())
+  pharmacyId             String   @unique
+  stripeCustomerId       String?
+  stripeSubscriptionId   String?
+  plan                   String   @default("BASIC")
+  status                 String   @default("TRIAL")
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  pharmacy               Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@map("subscriptions")
 }
 
 model Patient {
@@ -92,9 +119,11 @@ model Patient {
   addressLng  Float?
   portalToken String    @unique @default(uuid())
   language    Language  @default(EN)
+  pharmacyId  String?
   facilityId  String?
   createdAt   DateTime  @default(now())
 
+  pharmacy    Pharmacy? @relation(fields: [pharmacyId], references: [id])
   facility    Facility? @relation(fields: [facilityId], references: [id])
   packages    Package[]
 
@@ -111,6 +140,9 @@ model Facility {
   email        String    @unique
   passwordHash String
 
+  pharmacyId   String?
+
+  pharmacy     Pharmacy? @relation(fields: [pharmacyId], references: [id])
   patients     Patient[]
   packages     Package[]
 
@@ -161,6 +193,9 @@ model Bundle {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
+  pharmacyId  String?
+
+  pharmacy    Pharmacy?    @relation(fields: [pharmacyId], references: [id])
   driver      Driver?      @relation(fields: [driverId], references: [id])
   packages    Package[]
   deliveries  Delivery[]
@@ -275,6 +310,7 @@ enum Role {
   DISPATCHER
   SUPERVISOR
   ADMIN
+  SUPERADMIN
 }
 
 enum Language {
