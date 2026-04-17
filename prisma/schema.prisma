@@ -139,6 +139,7 @@ model Facility {
   phone        String?
   email        String    @unique
   passwordHash String
+  accessPin    String    @default("000000")
 
   pharmacyId   String?
 

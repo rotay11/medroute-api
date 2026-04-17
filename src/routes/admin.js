@@ -157,14 +157,27 @@ router.post('/facilities', authenticate, requireAdmin, async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
     const passwordHash = await bcrypt.hash(password, 12);
+    const accessPin = Math.floor(100000 + Math.random() * 900000).toString();
     const facility = await prisma.facility.create({
-      data: { name, email, phone: phone||'', address: address||'', contactPerson: contactPerson||'', passwordHash }
+      data: { name, email, phone: phone||'', address: address||'', contactPerson: contactPerson||'', passwordHash, accessPin }
     });
     return res.status(201).json({ facility });
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ error: 'A facility with this email already exists' });
     return res.status(500).json({ error: 'Could not create facility' });
   }
+});
+
+// Reset facility PIN
+router.post('/facilities/:id/reset-pin', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const newPin = Math.floor(100000 + Math.random() * 900000).toString();
+    const facility = await prisma.facility.update({
+      where: { id: req.params.id },
+      data: { accessPin: newPin }
+    });
+    return res.json({ success: true, accessPin: newPin, facilityName: facility.name });
+  } catch (err) { return res.status(500).json({ error: 'Could not reset PIN' }); }
 });
 
 // Update facility

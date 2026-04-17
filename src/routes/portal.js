@@ -49,13 +49,20 @@ router.get('/facilities', async (req, res) => {
   } catch (err) { return res.status(500).json({ error: 'Could not load facilities' }); }
 });
 
-// Caregiver/facility lookup by patient name and DOB
+// Caregiver/facility lookup by patient name and facility PIN
 router.post('/caregiver/lookup', async (req, res) => {
-  const { facilityId, firstName, lastName, dob, role, showMeds } = req.body;
-  if (!facilityId || !firstName || !lastName || !dob) {
+  const { facilityId, firstName, lastName, pin, role, showMeds } = req.body;
+  if (!facilityId || !firstName || !lastName || !pin) {
     return res.status(400).json({ error: 'All fields are required' });
   }
   try {
+    // Verify facility PIN
+    const facility = await prisma.facility.findUnique({ where: { id: facilityId } });
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    if (facility.accessPin !== pin) {
+      return res.status(401).json({ error: 'Incorrect PIN. Contact your pharmacy for the correct PIN.' });
+    }
+
     // Find patient by name
     const patients = await prisma.patient.findMany({
       where: {
@@ -68,11 +75,10 @@ router.post('/caregiver/lookup', async (req, res) => {
       return res.status(404).json({ error: 'Patient not found. Contact Clayworth Pharmacy at (510) 537-9402.' });
     }
 
-    // Verify date of birth
+    // Use first matching patient - PIN already verified above
     let patient = null;
     for (const p of patients) {
-      const ok = await bcrypt.compare(dob, p.dobHash);
-      if (ok) { patient = p; break; }
+      patient = p; break;
     }
 
     if (!patient) {
