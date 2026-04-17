@@ -7,13 +7,19 @@ const router = express.Router();
 
 // Patient login — email + date of birth
 router.post('/patient/login', async (req, res) => {
-  const { email, dob } = req.body;
-  if (!email || !dob) return res.status(400).json({ error:'Email and date of birth required' });
+  const { firstName, lastName, phoneLast4 } = req.body;
+  if (!firstName || !lastName || !phoneLast4) return res.status(400).json({ error:'First name, last name and last 4 digits of phone required' });
+  if (phoneLast4.length !== 4 || !/^[0-9]{4}$/.test(phoneLast4)) return res.status(400).json({ error:'Please enter exactly 4 digits' });
   try {
-    const patient = await prisma.patient.findUnique({ where:{ email } });
-    if (!patient) return res.status(401).json({ error:'Invalid credentials' });
-    const ok = await bcrypt.compare(dob, patient.dobHash);
-    if (!ok) return res.status(401).json({ error:'Invalid credentials' });
+    const patients = await prisma.patient.findMany({
+      where: {
+        firstName: { equals: firstName, mode: 'insensitive' },
+        lastName: { equals: lastName, mode: 'insensitive' }
+      }
+    });
+    if (!patients.length) return res.status(401).json({ error:'Patient not found. Please check your name.' });
+    const patient = patients.find(p => p.phone && p.phone.replace(/\D/g, '').slice(-4) === phoneLast4);
+    if (!patient) return res.status(401).json({ error:'Phone number does not match. Please try again.' });
     return res.json({ patient:{ id:patient.id, firstName:patient.firstName, lastName:patient.lastName, portalToken:patient.portalToken, language:patient.language } });
   } catch (err) { return res.status(500).json({ error:'Login failed' }); }
 });
@@ -124,6 +130,29 @@ router.post('/caregiver/lookup', async (req, res) => {
   } catch (err) {
     console.error('Caregiver lookup error:', err.message);
     return res.status(500).json({ error: 'Lookup failed. Contact Clayworth Pharmacy at (510) 537-9402.' });
+  }
+});
+
+// Get patient portal link by bundle ID — used for bag slip QR code generation
+router.get('/bundle/:bundleId/link', async (req, res) => {
+  try {
+    const bundle = await prisma.bundle.findUnique({
+      where: { id: req.params.bundleId },
+      include: { packages: { include: { patient: { select: { firstName: true, lastName: true, portalToken: true } } } } }
+    });
+    if (!bundle || !bundle.packages[0]?.patient) {
+      return res.status(404).json({ error: 'Bundle not found' });
+    }
+    const patient = bundle.packages[0].patient;
+    const portalUrl = 'https://medroute-dashboard.vercel.app/portal?token=' + patient.portalToken;
+    return res.json({
+      patientName: patient.firstName + ' ' + patient.lastName,
+      portalToken: patient.portalToken,
+      portalUrl,
+      qrUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&color=1D9E75&data=' + encodeURIComponent(portalUrl)
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Could not get portal link' });
   }
 });
 
