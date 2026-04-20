@@ -153,8 +153,19 @@ router.get('/route', async (req, res) => {
     const scanned = bundles.reduce((s,b) => s + b.packages.filter(p => 
       p.scans.some(sc => sc.scanType === 'PICKUP')).length, 0);
 
+    // Get pharmacy starting point
+    const pharmacy = await prisma.pharmacy.findFirst({
+      select: { lat: true, lng: true, name: true, address: true }
+    });
+
     return res.json({
       bundles: optimized,
+      startPoint: {
+        lat: pharmacy?.lat || 37.6879,
+        lng: pharmacy?.lng || -122.0561,
+        name: pharmacy?.name || 'Pharmacy',
+        address: pharmacy?.address || ''
+      },
       summary: {
         totalStops: bundles.length,
         totalPackages: total,
