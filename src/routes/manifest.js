@@ -102,11 +102,196 @@ router.use(authenticate);
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Parse manifest photo using Claude AI
+// Fast OCR using Google Vision API
+router.post('/parse-fast', async (req, res) => {
+  const { imageBase64, mediaType } = req.body;
+  if (!imageBase64) return res.status(400).json({ error: 'Image required' });
+
+  try {
+    const visionKey = process.env.GOOGLE_VISION_API_KEY;
+    if (!visionKey) return res.status(500).json({ error: 'Vision API not configured' });
+
+    const visionRes = await fetch(
+      'https://vision.googleapis.com/v1/images:annotate?key=' + visionKey,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{
+            image: { content: imageBase64 },
+            features: [{ type: 'TEXT_DETECTION', maxResults: 1 }]
+          }]
+        })
+      }
+    );
+
+    const visionData = await visionRes.json();
+    const fullText = visionData.responses?.[0]?.fullTextAnnotation?.text || '';
+
+    if (!fullText) {
+      return res.status(400).json({ error: 'Could not read text from image' });
+    }
+
+    // Parse the manifest text
+    const lines = fullText.split('\n').map(l => l.trim()).filter(Boolean);
+
+    // Find patient name - ALL CAPS line after pharmacy address block
+    let firstName = '', lastName = '', address = '', city = '', state = '', zip = '', phone = '';
+    const medications = [];
+
+    // Find patient name - look for ALL CAPS name pattern
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Patient name is ALL CAPS, typically LASTNAME, FIRSTNAME or FIRSTNAME LASTNAME
+      if (/^[A-Z][A-Z]+[,\s]+[A-Z][A-Z]+/.test(line) && !line.includes('Pharmacy') && !line.includes('DELIVERY') && !line.includes('MANIFEST') && !line.includes('Rx') && !line.includes('PERIOD')) {
+        const nameParts = line.split(',').map(s => s.trim());
+        if (nameParts.length >= 2) {
+          lastName = nameParts[0];
+          firstName = nameParts[1].split(' ')[0];
+        } else {
+          const words = line.split(' ');
+          firstName = words[0];
+          lastName = words[words.length - 1];
+        }
+        // Address is typically the next line
+        if (i + 1 < lines.length) {
+          address = lines[i + 1];
+        }
+        // City, state, zip on the line after address
+        if (i + 2 < lines.length) {
+          const cityLine = lines[i + 2];
+          const csz = cityLine.match(/^([A-Za-z\s]+),?\s*([A-Z]{2})\s*(\d{5})/);
+          if (csz) {
+            city = csz[1].trim();
+            state = csz[2];
+            zip = csz[3];
+          }
+        }
+        break;
+      }
+    }
+
+    // Find phone number
+    for (const line of lines) {
+      const phoneMatch = line.match(/Phone[:\s]*([\(\)\d\s\-]+)/i);
+      if (phoneMatch) {
+        phone = phoneMatch[1].trim();
+        break;
+      }
+    }
+
+    // Find all RX numbers and medications
+    for (let i = 0; i < lines.length; i++) {
+      const rxMatch = lines[i].match(/Rx\s*([\d\-]+)/i);
+      if (rxMatch) {
+        const rxNumber = rxMatch[1];
+        // Medication name is typically the next line or same line after RX
+        let medication = '';
+        let quantity = '';
+        // Check next line for medication
+        if (i + 1 < lines.length) {
+          const medLine = lines[i + 1];
+          // Skip if next line is another Rx number
+          if (!/^Rx\s/i.test(medLine)) {
+            // Extract medication name - everything before the date
+            const medMatch = medLine.match(/^([A-Z][A-Z\s\.\%\/\d]+?)\s+\d{1,2}\/\d{1,2}\/\d{2}/);
+            if (medMatch) {
+              medication = medMatch[1].trim();
+            } else {
+              medication = medLine.split(/\s{2,}/)[0].trim();
+            }
+            // Extract quantity - usually a number near the end
+            const qtyMatch = medLine.match(/(\d+)\s+\$[\d\.]+\s*$/);
+            if (qtyMatch) quantity = qtyMatch[1];
+          }
+        }
+        medications.push({ rxNumber, medication, quantity: quantity || '1' });
+      }
+    }
+
+    const result = {
+      firstName,
+      lastName,
+      address,
+      city,
+      state,
+      zip,
+      phone,
+      medications: medications.length > 0 ? medications : [],
+      totalRxCount: medications.length.toString(),
+      rawText: fullText
+    };
+
+    console.log('Vision OCR:', firstName, lastName, medications.length, 'medications found');
+    return res.json({ success: true, data: result });
+
+  } catch (err) {
+    console.error('Vision parse error:', err.message);
+    return res.status(500).json({ error: 'Could not read manifest', details: err.message });
+  }
+});
+
+// Parse manifest photo — uses Vision first, Claude AI as fallback
 router.post('/parse', async (req, res) => {
   const { imageBase64, mediaType } = req.body;
   if (!imageBase64) return res.status(400).json({ error: 'Image required' });
 
+  // Try Google Vision first for speed
+  const visionKey = process.env.GOOGLE_VISION_API_KEY;
+  if (visionKey) {
+    try {
+      const visionRes = await fetch(
+        'https://vision.googleapis.com/v1/images:annotate?key=' + visionKey,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requests: [{
+              image: { content: imageBase64 },
+              features: [{ type: 'TEXT_DETECTION', maxResults: 1 }]
+            }]
+          })
+        }
+      );
+      const visionData = await visionRes.json();
+      const fullText = visionData.responses?.[0]?.fullTextAnnotation?.text || '';
+      if (fullText) {
+        // Use Claude to parse the extracted text — much faster than sending image
+        const parseResponse = await client.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          messages: [{
+            role: 'user',
+            content: `Parse this pharmacy delivery manifest text. Return ONLY valid JSON, no markdown:
+{
+  "firstName": "first name",
+  "lastName": "last name",
+  "address": "street address",
+  "city": "city",
+  "state": "2 letter state",
+  "zip": "zip code",
+  "phone": "phone number",
+  "medications": [
+    { "rxNumber": "rx number", "medication": "drug name and strength", "quantity": "qty" }
+  ]
+}
+Extract ALL medications - every line with Rx followed by numbers.
+Manifest text:
+${fullText}`
+          }]
+        });
+        let parsed = parseResponse.content[0].text.trim();
+        parsed = parsed.replace(/\`\`\`json\n?/g, '').replace(/\`\`\`\n?/g, '').trim();
+        const data = JSON.parse(parsed);
+        console.log('Vision+Claude OCR:', data.firstName, data.lastName, (data.medications||[]).length, 'meds');
+        return res.json({ success: true, data });
+      }
+    } catch (visionErr) {
+      console.log('Vision failed, falling back to Claude image:', visionErr.message);
+    }
+  }
+
+  // Fallback: send image directly to Claude
   try {
     const response = await client.messages.create({
       model: 'claude-opus-4-5',
