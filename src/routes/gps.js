@@ -15,7 +15,8 @@ router.post('/',
     const { lat, lng, accuracy, speed, heading } = req.body;
     try {
       await prisma.gpsPing.create({ data: { driverId: req.driver.id, lat, lng, accuracy: accuracy||null, speed: speed||null, heading: heading||null } });
-      if (req.driver.status === 'IDLE') {
+      // Update to ACTIVE whenever we get a GPS ping (from OFFLINE, IDLE, or any state)
+      if (req.driver.status !== 'ACTIVE' && req.driver.status !== 'SUSPENDED') {
         await prisma.driver.update({ where: { id: req.driver.id }, data: { status: 'ACTIVE' } });
       }
       const io = req.app.get('io');
