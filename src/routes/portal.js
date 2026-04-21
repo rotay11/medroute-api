@@ -213,6 +213,58 @@ router.get('/facility/:facilityId/packages', async (req, res) => {
 module.exports = router;
 
 // AI Agent — patient asks questions about their delivery
+// Calculate delivery window based on stop order and driver position
+function calculateDeliveryWindow(bundle, driverGpsPing, routeStartTime) {
+  const AVG_MINUTES_PER_STOP = 18; // realistic average including driving + delivery
+  const stopOrder = bundle?.stopOrder || 0;
+  
+  // If delivered, no window needed
+  if (bundle?.status === 'DELIVERED') return { delivered: true };
+  
+  // Route not started yet - use stop order from pharmacy
+  const now = new Date();
+  const pacificTimeNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  
+  // Estimate minutes remaining
+  let minutesUntilDelivery;
+  let windowWidth; // in minutes
+  
+  if (bundle?.status === 'IN_TRANSIT' && driverGpsPing && bundle?.addressLat && bundle?.addressLng) {
+    // Driver is moving and we have GPS - calculate based on distance
+    const R = 3959; // miles
+    const dLat = (bundle.addressLat - driverGpsPing.lat) * Math.PI / 180;
+    const dLon = (bundle.addressLng - driverGpsPing.lng) * Math.PI / 180;
+    const a = Math.sin(dLat/2) ** 2 + Math.cos(driverGpsPing.lat * Math.PI/180) * Math.cos(bundle.addressLat * Math.PI/180) * Math.sin(dLon/2) ** 2;
+    const distanceMiles = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    // Assume average 25 mph in suburban driving
+    minutesUntilDelivery = Math.round((distanceMiles / 25) * 60) + 5; // +5 for parking/delivery
+    windowWidth = distanceMiles < 2 ? 15 : 30; // tighter window when close
+  } else if (bundle?.status === 'ASSIGNED' || bundle?.status === 'PENDING') {
+    // Route not started - use stop order
+    minutesUntilDelivery = stopOrder * AVG_MINUTES_PER_STOP;
+    windowWidth = 60; // wider window for future stops
+  } else {
+    // IN_TRANSIT but no GPS - use stop order estimate
+    minutesUntilDelivery = stopOrder * AVG_MINUTES_PER_STOP;
+    windowWidth = 45;
+  }
+  
+  const startTime = new Date(now.getTime() + (minutesUntilDelivery - windowWidth/2) * 60000);
+  const endTime = new Date(now.getTime() + (minutesUntilDelivery + windowWidth/2) * 60000);
+  
+  const formatTime = (d) => d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit', hour12: true });
+  
+  return {
+    delivered: false,
+    windowStart: formatTime(startTime),
+    windowEnd: formatTime(endTime),
+    windowText: `Expected between ${formatTime(startTime)} and ${formatTime(endTime)}`,
+    minutesRemaining: minutesUntilDelivery,
+    windowWidthMinutes: windowWidth,
+    confidence: windowWidth <= 20 ? 'high' : windowWidth <= 40 ? 'medium' : 'estimated'
+  };
+}
+
 router.post('/patient/:portalToken/chat', async (req, res) => {
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: 'Message required' });
@@ -229,7 +281,7 @@ router.post('/patient/:portalToken/chat', async (req, res) => {
       include: {
         bundle: {
           select: {
-            status: true, stopOrder: true, eta: true,
+            status: true, stopOrder: true, eta: true, addressLat: true, addressLng: true,
             driver: {
               select: {
                 firstName: true, phone: true,
@@ -242,19 +294,28 @@ router.post('/patient/:portalToken/chat', async (req, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Build context for AI
+    // Build context for AI using smart delivery windows
+    const pacificTime = (d) => new Date(d).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit', hour12: true });
     const deliveryContext = packages.map(pkg => {
       const bundle = pkg.bundle;
       const driver = bundle?.driver;
       const lastPing = driver?.gpsPings?.[0];
+      const window = calculateDeliveryWindow(bundle, lastPing, null);
+      
+      let etaInfo;
+      if (window.delivered) {
+        etaInfo = 'Already delivered';
+      } else {
+        etaInfo = window.windowText + ' (confidence: ' + window.confidence + ')';
+      }
+      
       return `
 Medication: ${pkg.medication} ${pkg.dosage || ''}
 RX Number: ${pkg.rxId}
-Status: ${pkg.status}
 Delivery status: ${bundle?.status || 'Not yet assigned'}
 Driver: ${driver?.firstName || 'Not yet assigned'}
-Last known driver location: ${lastPing ? `Updated ${new Date(lastPing.timestamp).toLocaleTimeString()}` : 'Not available'}
-ETA: ${bundle?.eta ? new Date(bundle.eta).toLocaleTimeString() : 'Not yet available'}
+Stop number: ${bundle?.stopOrder || 'Not assigned'}
+Expected delivery: ${etaInfo}
       `.trim();
     }).join('\n\n');
 
@@ -262,7 +323,7 @@ ETA: ${bundle?.eta ? new Date(bundle.eta).toLocaleTimeString() : 'Not yet availa
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const response = await client.messages.create({
-      model: 'claude-opus-4-5',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 300,
       system: `You are a helpful delivery assistant for Clayworth Pharmacy. You help patients track their medication deliveries.
       
