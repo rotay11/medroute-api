@@ -16,7 +16,9 @@ router.get('/drivers', async (req, res) => {
         _count: { select:{ deliveries:true, discrepancies:true } },
       },
     });
-    return res.json({ drivers });
+    // Add activeStops count for dashboard UI
+    const enriched = drivers.map(d => ({ ...d, activeStops: d.bundles.length }));
+    return res.json({ drivers: enriched });
   } catch (err) { return res.status(500).json({ error:'Could not load drivers' }); }
 });
 
