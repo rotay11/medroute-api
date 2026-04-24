@@ -195,6 +195,11 @@ model Bundle {
   updatedAt   DateTime     @updatedAt
 
   pharmacyId  String?
+  urgent      Boolean      @default(false)
+  urgentReason String?
+  urgentNote  String?
+  urgentMarkedAt DateTime?
+  urgentMarkedBy String?
 
   pharmacy    Pharmacy?    @relation(fields: [pharmacyId], references: [id])
   driver      Driver?      @relation(fields: [driverId], references: [id])

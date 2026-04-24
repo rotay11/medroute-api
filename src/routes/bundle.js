@@ -76,4 +76,149 @@ router.post('/:id/no-answer', async (req, res) => {
   } catch (err) { return res.status(500).json({ error:'Could not update stop' }); }
 });
 
+
+// Mark bundle as urgent with reason code
+router.post('/:id/urgent', async (req, res) => {
+  const { reason, note } = req.body;
+  const validReasons = ['Patient transitioning', 'Dose time critical', 'Pharmacist request', 'Refrigerated item', 'STAT order', 'Other'];
+  
+  if (!reason || !validReasons.includes(reason)) {
+    return res.status(400).json({ error: 'Valid reason code required' });
+  }
+  if (reason === 'Other' && (!note || note.trim().length < 3)) {
+    return res.status(400).json({ error: 'Explanation required for Other reason' });
+  }
+  
+  try {
+    const bundle = await prisma.bundle.update({
+      where: { id: req.params.id },
+      data: {
+        urgent: true,
+        urgentReason: reason,
+        urgentNote: note || null,
+        urgentMarkedAt: new Date(),
+        urgentMarkedBy: req.driver.id
+      },
+      include: { packages: { include: { patient: { select: { firstName: true, lastName: true, portalToken: true } } } } }
+    });
+    
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.driver.id,
+        actorType: 'DRIVER',
+        action: 'MARK_URGENT',
+        entityType: 'Bundle',
+        entityId: bundle.id,
+        metadata: { reason, note, bundleAddress: bundle.address }
+      }
+    });
+    
+    // Notify dispatchers via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.to('dispatchers').emit('bundle_urgent', {
+        bundleId: bundle.id,
+        driverId: req.driver.id,
+        driverName: req.driver.firstName + ' ' + req.driver.lastName,
+        reason,
+        note,
+        address: bundle.address,
+        patientName: bundle.packages[0]?.patient?.firstName + ' ' + bundle.packages[0]?.patient?.lastName,
+        timestamp: new Date()
+      });
+      
+      // Notify patient via portal socket
+      const patientId = bundle.packages[0]?.patient?.id;
+      if (patientId) {
+        io.to('patient_' + patientId).emit('delivery_urgent', {
+          message: 'Your delivery has been marked as priority',
+          timestamp: new Date()
+        });
+      }
+    }
+    
+    return res.json({ success: true, bundle });
+  } catch (err) {
+    logger.error('Urgent mark error:', err);
+    return res.status(500).json({ error: 'Could not mark urgent' });
+  }
+});
+
+// Remove urgent status
+router.delete('/:id/urgent', async (req, res) => {
+  try {
+    const bundle = await prisma.bundle.update({
+      where: { id: req.params.id },
+      data: {
+        urgent: false,
+        urgentReason: null,
+        urgentNote: null,
+        urgentMarkedAt: null,
+        urgentMarkedBy: null
+      }
+    });
+    
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.driver.id,
+        actorType: 'DRIVER',
+        action: 'REMOVE_URGENT',
+        entityType: 'Bundle',
+        entityId: bundle.id
+      }
+    });
+    
+    const io = req.app.get('io');
+    if (io) io.to('dispatchers').emit('bundle_urgent_removed', { bundleId: bundle.id });
+    
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ error: 'Could not remove urgent' });
+  }
+});
+
+// Reorder stops - manual move up/down
+router.post('/reorder', async (req, res) => {
+  const { bundleId, direction } = req.body; // direction: 'up' or 'down'
+  if (!bundleId || !['up', 'down'].includes(direction)) {
+    return res.status(400).json({ error: 'bundleId and direction (up/down) required' });
+  }
+  
+  try {
+    const bundles = await prisma.bundle.findMany({
+      where: { driverId: req.driver.id, status: { in: ['ASSIGNED', 'IN_TRANSIT'] } },
+      orderBy: { stopOrder: 'asc' }
+    });
+    
+    const currentIndex = bundles.findIndex(b => b.id === bundleId);
+    if (currentIndex === -1) return res.status(404).json({ error: 'Bundle not found' });
+    
+    const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (swapIndex < 0 || swapIndex >= bundles.length) {
+      return res.status(400).json({ error: 'Cannot move further ' + direction });
+    }
+    
+    // Don't allow reordering past IN_TRANSIT stops
+    if (bundles[swapIndex].status === 'IN_TRANSIT') {
+      return res.status(400).json({ error: 'Cannot reorder current in-progress stop' });
+    }
+    
+    // Swap stopOrder values
+    const currentOrder = bundles[currentIndex].stopOrder;
+    const swapOrder = bundles[swapIndex].stopOrder;
+    
+    await prisma.bundle.update({ where: { id: bundles[currentIndex].id }, data: { stopOrder: swapOrder } });
+    await prisma.bundle.update({ where: { id: bundles[swapIndex].id }, data: { stopOrder: currentOrder } });
+    
+    const io = req.app.get('io');
+    if (io) io.to('dispatchers').emit('route_reordered', { driverId: req.driver.id });
+    
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error('Reorder error:', err);
+    return res.status(500).json({ error: 'Could not reorder' });
+  }
+});
+
 module.exports = router;
