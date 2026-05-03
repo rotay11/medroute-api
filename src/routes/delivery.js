@@ -8,7 +8,7 @@ const router = express.Router();
 router.use(authenticate);
 
 router.post('/',
-  [body('bundleId').notEmpty(), body('gpsLat').isFloat({ min:-90, max:90 }), body('gpsLng').isFloat({ min:-180, max:180 }), body('scannedRxIds').isArray({ min:1 })],
+  [body('bundleId').notEmpty(), body('gpsLat').isFloat({ min:-90, max:90 }), body('gpsLng').isFloat({ min:-180, max:180 })],
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ error:'Invalid delivery data' });
@@ -20,16 +20,22 @@ router.post('/',
       });
       if (!bundle) return res.status(404).json({ error:'Bundle not found' });
 
+      const scannedIds = scannedRxIds || [];
       const expected = bundle.packages.map(p=>p.rxId);
-      const missing  = expected.filter(id=>!scannedRxIds.includes(id));
-      if (missing.length) {
+      const missing  = expected.filter(id=>!scannedIds.includes(id));
+      
+      // Check controlled substances (RX starts with 2 or 4) - require scan unless refused
+      const controlledMissing = missing.filter(rxId => rxId.startsWith('2') || rxId.startsWith('4'));
+      if (controlledMissing.length > 0 && !refused) {
+        return res.status(400).json({ error:'Controlled substances must be scanned', code:'CONTROLLED_NOT_SCANNED', missingItems:controlledMissing });
+      }
+      
+      // Log non-controlled missing items as informational (not blocking)
+      if (missing.length > 0 && !refused) {
         await Promise.all(missing.map(rxId => {
           const pkg = bundle.packages.find(p=>p.rxId===rxId);
-          return prisma.discrepancy.create({ data:{ packageId:pkg?.id||null, driverId:req.driver.id, type:'MISSING_AT_DELIVERY', description:`${rxId} not scanned at delivery` } });
+          return prisma.discrepancy.create({ data:{ packageId:pkg?.id||null, driverId:req.driver.id, type:'MISSING_AT_DELIVERY', description:`${rxId} not scanned at delivery (visual confirm)`, status: 'RESOLVED' } });
         }));
-        const io = req.app.get('io');
-        if (io) io.to('dispatchers').emit('alert', { type:'MISSING_AT_DELIVERY', severity:'HIGH', message:`${missing.length} item(s) missing at delivery: ${missing.join(', ')}`, driverId:req.driver.id, bundleId, timestamp:new Date() });
-        return res.status(400).json({ error:'Not all items scanned', code:'MISSING_ITEMS', missingItems:missing });
       }
 
       const signatureUrl = signatureBase64 ? `http://localhost:${process.env.PORT||4000}/files/signatures/${bundleId}.png` : null;
