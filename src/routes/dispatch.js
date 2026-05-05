@@ -93,6 +93,14 @@ router.patch('/alerts/:id/archive', async (req, res) => {
   } catch (err) { return res.status(500).json({ error: 'Could not archive alert' }); }
 });
 
+// Delete an alert permanently
+router.delete('/alerts/:id', async (req, res) => {
+  try {
+    await prisma.discrepancy.delete({ where: { id: req.params.id } });
+    return res.json({ success: true });
+  } catch (err) { return res.status(500).json({ error: 'Could not delete alert' }); }
+});
+
 
 // Send delay notification to patient
 router.post('/packages/:id/notify-delay', async (req, res) => {
