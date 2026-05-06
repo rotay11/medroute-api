@@ -192,6 +192,50 @@ router.patch('/facilities/:id', authenticate, requireAdmin, async (req, res) => 
   } catch (err) { return res.status(500).json({ error: 'Could not update facility' }); }
 });
 
+// Reset driver password - generates new temp password
+router.post('/drivers/:id/reset-password', async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { id: req.params.id } });
+    if (!driver) return res.status(404).json({ error: 'Driver not found' });
+    
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#';
+    const tempPass = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const hash = await bcrypt.hash(tempPass, 12);
+    
+    await prisma.driver.update({
+      where: { id: req.params.id },
+      data: { passwordHash: hash, forcePasswordChange: true }
+    });
+    
+    // Invalidate all active sessions
+    await prisma.session.updateMany({
+      where: { driverId: req.params.id, isActive: true },
+      data: { isActive: false, logoutAt: new Date() }
+    });
+    
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.driver.id,
+        actorType: 'admin',
+        action: 'PASSWORD_RESET',
+        entityType: 'driver',
+        entityId: driver.id,
+        metadata: { resetBy: req.driver.email, driverEmail: driver.email }
+      }
+    });
+    
+    logger.info(`Password reset for driver ${driver.driverId} by ${req.driver.email}`);
+    return res.json({ 
+      success: true, 
+      tempPassword: tempPass,
+      message: 'Password reset. New temp password: ' + tempPass + '. Driver will be required to change on next login.'
+    });
+  } catch (err) {
+    logger.error('Password reset error:', err);
+    return res.status(500).json({ error: 'Could not reset password' });
+  }
+});
+
 module.exports = router;
 
 // Delete patient
