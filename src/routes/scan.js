@@ -18,8 +18,13 @@ router.post('/',
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ error: 'Invalid scan data' });
-    const { rxId, scanType, gpsLat, gpsLng, notes } = req.body;
+    let { rxId, scanType, gpsLat, gpsLng, notes } = req.body;
     const driverId = req.driver.id;
+    
+    // Clean up RX ID - strip 'Rx', 'RX', or 'rx' prefix and any whitespace
+    if (rxId) {
+      rxId = rxId.toString().trim().replace(/^(Rx|RX|rx)\s*/i, '').trim();
+    }
 
     try {
       const pkg = await prisma.package.findUnique({

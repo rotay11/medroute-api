@@ -3,6 +3,13 @@ const prisma = require('../db/client');
 const { authenticate } = require('../middleware/auth');
 const Anthropic = require('@anthropic-ai/sdk');
 
+
+// Clean RX number - strip 'Rx', 'RX', or 'rx' prefix and whitespace
+function cleanRxNumber(rxNum) {
+  if (!rxNum) return rxNum;
+  return rxNum.toString().trim().replace(/^(Rx|RX|rx)\s*/i, '').trim();
+}
+
 const router = express.Router();
 
 // Inbound email from SendGrid — processes emailed manifests
@@ -67,11 +74,11 @@ router.post('/inbound', express.urlencoded({ extended: true }), async (req, res)
           });
         }
 
-        const existing = await prisma.package.findFirst({ where: { rxId: delivery.rxNumber } });
+        const existing = await prisma.package.findFirst({ where: { rxId: cleanRxNumber(delivery.rxNumber) } });
         if (!existing) {
           const pkg = await prisma.package.create({
             data: {
-              rxId: delivery.rxNumber,
+              rxId: cleanRxNumber(delivery.rxNumber),
               medication: delivery.medication || 'Unknown',
               quantity: delivery.quantity || '1',
               patientId: patient.id,
@@ -80,9 +87,9 @@ router.post('/inbound', express.urlencoded({ extended: true }), async (req, res)
               urgent: false,
             }
           });
-          results.push({ rxId: delivery.rxNumber, patient: `${delivery.firstName} ${delivery.lastName}`, status: 'created' });
+          results.push({ rxId: cleanRxNumber(delivery.rxNumber), patient: `${delivery.firstName} ${delivery.lastName}`, status: 'created' });
         } else {
-          results.push({ rxId: delivery.rxNumber, status: 'already exists' });
+          results.push({ rxId: cleanRxNumber(delivery.rxNumber), status: 'already exists' });
         }
       } catch (err) {
         console.error('Error processing delivery:', err.message);
@@ -394,14 +401,14 @@ router.post('/create-delivery', async (req, res) => {
     const skippedPackages = [];
     for (const med of medList) {
       if (!med.rxNumber) continue;
-      const existing = await prisma.package.findFirst({ where: { rxId: med.rxNumber } });
+      const existing = await prisma.package.findFirst({ where: { rxId: cleanRxNumber(med.rxNumber) } });
       if (existing) {
         skippedPackages.push(med.rxNumber);
         continue;
       }
       const pkg = await prisma.package.create({
         data: {
-          rxId: med.rxNumber,
+          rxId: cleanRxNumber(med.rxNumber),
           medication: med.medication || 'Unknown',
           dosage: '',
           quantity: med.quantity || '1',
