@@ -21,9 +21,9 @@ router.post('/',
     let { rxId, scanType, gpsLat, gpsLng, notes } = req.body;
     const driverId = req.driver.id;
     
-    // Clean up RX ID - strip 'Rx', 'RX', or 'rx' prefix and any whitespace
+    // Clean up RX ID - strip 'Rx', 'RX', 'rx' prefix and dashes/whitespace
     if (rxId) {
-      rxId = rxId.toString().trim().replace(/^(Rx|RX|rx)\s*/i, '').trim();
+      rxId = rxId.toString().trim().replace(/^(Rx|RX|rx)[-\s]*/i, '').trim();
     }
 
     try {
