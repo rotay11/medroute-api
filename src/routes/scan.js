@@ -21,9 +21,20 @@ router.post('/',
     let { rxId, scanType, gpsLat, gpsLng, notes } = req.body;
     const driverId = req.driver.id;
     
-    // Clean up RX ID - strip 'Rx', 'RX', 'rx' prefix and dashes/whitespace
+    // Clean up RX ID - handle multiple formats:
+    // 1. 'Rx 7034195-00' or 'RX-7034195' - strip prefix
+    // 2. '4007034195005' - 13-digit barcode: extract middle 7 digits + '-00'
     if (rxId) {
-      rxId = rxId.toString().trim().replace(/^(Rx|RX|rx)[-\s]*/i, '').trim();
+      rxId = rxId.toString().trim();
+      
+      // Strip Rx/RX/rx prefix with optional dash/space
+      rxId = rxId.replace(/^(Rx|RX|rx)[-\s]*/i, '').trim();
+      
+      // Clayworth barcode format: 13 digits starting with '400'
+      if (/^400\d{10}$/.test(rxId)) {
+        const rxCore = rxId.substring(3, 10); // Extract digits 4-10
+        rxId = rxCore + '-00';
+      }
     }
 
     try {
