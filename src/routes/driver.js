@@ -32,7 +32,13 @@ router.get('/stats', async (req, res) => {
     ]);
     // Cap compliance at 0-100% range and only count UNRESOLVED discrepancies
     const unresolvedDiscrepancies = await prisma.discrepancy.count({ 
-      where: { driverId: req.driver.id, status: { in: ['OPEN', null] } } 
+      where: { 
+        driverId: req.driver.id, 
+        OR: [
+          { status: 'OPEN' },
+          { status: null }
+        ]
+      } 
     });
     let compliance = 100;
     if (totalDeliveries > 0) {
