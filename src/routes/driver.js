@@ -30,8 +30,16 @@ router.get('/stats', async (req, res) => {
       prisma.discrepancy.count({ where:{ driverId:req.driver.id } }),
       prisma.bundle.count({ where:{ driverId:req.driver.id, status:{ in:['ASSIGNED','IN_TRANSIT'] } } }),
     ]);
-    const compliance = totalDeliveries > 0 ? Math.round(((totalDeliveries - discrepancies) / totalDeliveries) * 100) : 100;
-    return res.json({ totalDeliveries, todayDeliveries, discrepancies, activeBundles, compliance: `${compliance}%` });
+    // Cap compliance at 0-100% range and only count UNRESOLVED discrepancies
+    const unresolvedDiscrepancies = await prisma.discrepancy.count({ 
+      where: { driverId: req.driver.id, status: { in: ['OPEN', null] } } 
+    });
+    let compliance = 100;
+    if (totalDeliveries > 0) {
+      compliance = Math.round(((totalDeliveries - unresolvedDiscrepancies) / totalDeliveries) * 100);
+      compliance = Math.max(0, Math.min(100, compliance)); // cap 0-100
+    }
+    return res.json({ totalDeliveries, todayDeliveries, discrepancies: unresolvedDiscrepancies, activeBundles, compliance: `${compliance}%` });
   } catch (err) { return res.status(500).json({ error:'Could not load stats' }); }
 });
 

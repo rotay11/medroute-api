@@ -146,8 +146,17 @@ router.get('/manifest', async (req, res) => {
 // Get optimized route for driver
 router.get('/route', async (req, res) => {
   try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    
     const bundles = await prisma.bundle.findMany({
-      where: { driverId: req.driver.id, status: { in: ['ASSIGNED', 'IN_TRANSIT'] } },
+      where: { 
+        driverId: req.driver.id, 
+        OR: [
+          { status: { in: ['ASSIGNED', 'IN_TRANSIT'] } },
+          { status: 'DELIVERED', updatedAt: { gte: todayStart } }
+        ]
+      },
       include: {
         packages: {
           include: {
