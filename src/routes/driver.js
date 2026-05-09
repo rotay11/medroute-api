@@ -34,10 +34,7 @@ router.get('/stats', async (req, res) => {
     const unresolvedDiscrepancies = await prisma.discrepancy.count({ 
       where: { 
         driverId: req.driver.id, 
-        OR: [
-          { status: 'OPEN' },
-          { status: null }
-        ]
+        status: { not: 'RESOLVED' }
       } 
     });
     let compliance = 100;
