@@ -396,14 +396,25 @@ router.post('/create-delivery', async (req, res) => {
     // Get pharmacy
     const pharmacy = await prisma.pharmacy.findFirst();
 
-    // Create all packages from medList
+    // Create all packages from medList - with deduplication
     const createdPackages = [];
     const skippedPackages = [];
+    const seenInThisBatch = new Set();
     for (const med of medList) {
-      if (!med.rxNumber) continue;
-      const existing = await prisma.package.findFirst({ where: { rxId: cleanRxNumber(med.rxNumber) } });
+      // Skip blank, whitespace-only, or invalid RX numbers
+      const cleanedRx = cleanRxNumber(med.rxNumber);
+      if (!cleanedRx || cleanedRx.trim().length < 3) continue;
+      
+      // Skip duplicates within this same scan batch (multi-page re-reads)
+      if (seenInThisBatch.has(cleanedRx)) {
+        skippedPackages.push(cleanedRx);
+        continue;
+      }
+      seenInThisBatch.add(cleanedRx);
+      
+      const existing = await prisma.package.findFirst({ where: { rxId: cleanedRx } });
       if (existing) {
-        skippedPackages.push(med.rxNumber);
+        skippedPackages.push(cleanedRx);
         continue;
       }
       const pkg = await prisma.package.create({
@@ -425,23 +436,36 @@ router.post('/create-delivery', async (req, res) => {
       return res.status(409).json({ error: 'All RX numbers already in system', skipped: skippedPackages });
     }
 
-    // Find or create bundle for this driver
+    // Check if THIS PATIENT already has an active bundle for this driver
     const driver = await prisma.driver.findUnique({ where: { id: req.driver.id } });
     let bundle = await prisma.bundle.findFirst({
-      where: { driverId: req.driver.id, status: 'ASSIGNED' },
-      orderBy: { stopOrder: 'desc' }
-    });
-
-    const stopOrder = bundle ? bundle.stopOrder + 1 : 1;
-    bundle = await prisma.bundle.create({
-      data: {
+      where: { 
+        driverId: req.driver.id, 
         patientId: patient.id,
-        address,
-        driver: { connect: { id: req.driver.id } },
-        stopOrder,
-        status: 'ASSIGNED',
+        status: { in: ['ASSIGNED', 'IN_TRANSIT'] }
       }
     });
+
+    if (bundle) {
+      // Patient already has a stop - add packages to existing bundle (no duplicate stop)
+      console.log('Adding packages to existing bundle for patient ' + patient.id);
+    } else {
+      // No existing stop for this patient - create new bundle
+      const lastBundle = await prisma.bundle.findFirst({
+        where: { driverId: req.driver.id, status: { in: ['ASSIGNED', 'IN_TRANSIT'] } },
+        orderBy: { stopOrder: 'desc' }
+      });
+      const stopOrder = lastBundle ? lastBundle.stopOrder + 1 : 1;
+      bundle = await prisma.bundle.create({
+        data: {
+          patientId: patient.id,
+          address,
+          driver: { connect: { id: req.driver.id } },
+          stopOrder,
+          status: 'ASSIGNED',
+        }
+      });
+    }
 
     // Link all packages to bundle
     for (const pkg of createdPackages) {
