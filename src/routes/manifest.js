@@ -2,6 +2,7 @@ const express = require('express');
 const prisma = require('../db/client');
 const { authenticate } = require('../middleware/auth');
 const Anthropic = require('@anthropic-ai/sdk');
+const { geocodeAddress } = require('../services/geocode');
 
 
 // Clean RX number - strip 'Rx', 'RX', or 'rx' prefix and whitespace
@@ -456,15 +457,28 @@ router.post('/create-delivery', async (req, res) => {
         orderBy: { stopOrder: 'desc' }
       });
       const stopOrder = lastBundle ? lastBundle.stopOrder + 1 : 1;
+
+      // Geocode the address to enable nearest/farthest sorting
+      const coords = await geocodeAddress(address);
+
       bundle = await prisma.bundle.create({
         data: {
           patientId: patient.id,
           address,
+          addressLat: coords ? coords.lat : null,
+          addressLng: coords ? coords.lng : null,
           driver: { connect: { id: req.driver.id } },
           stopOrder,
           status: 'ASSIGNED',
         }
       });
+
+      if (coords) {
+        await prisma.patient.update({
+          where: { id: patient.id },
+          data: { addressLat: coords.lat, addressLng: coords.lng }
+        }).catch(() => {});
+      }
     }
 
     // Link all packages to bundle

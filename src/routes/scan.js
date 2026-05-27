@@ -4,6 +4,7 @@ const prisma  = require('../db/client');
 const logger  = require('../utils/logger');
 const { authenticate } = require('../middleware/auth');
 const { extractZipCode } = require('../services/zoneService');
+const { geocodeAddress } = require('../services/geocode');
 
 const router = express.Router();
 router.use(authenticate);
@@ -77,10 +78,14 @@ router.post('/',
             orderBy: { stopOrder: 'desc' }
           });
           const nextStop = lastBundle ? lastBundle.stopOrder + 1 : 1;
+          const bundleAddr = pkg.patient.address || 'Unknown address';
+          const bundleCoords = await geocodeAddress(bundleAddr);
           const newBundle = await prisma.bundle.create({
             data: {
               patientId: pkg.patientId,
-              address: pkg.patient.address || 'Unknown address',
+              address: bundleAddr,
+              addressLat: bundleCoords ? bundleCoords.lat : null,
+              addressLng: bundleCoords ? bundleCoords.lng : null,
               driver: { connect: { id: driverId } },
               stopOrder: nextStop,
               status: 'ASSIGNED',
