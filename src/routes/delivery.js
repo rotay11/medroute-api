@@ -74,8 +74,13 @@ router.post('/',
         allDelivered: !next,
       });
     } catch (err) {
-      logger.error('Delivery error:', err);
-      return res.status(500).json({ error:'Delivery confirmation failed' });
+      logger.error('Delivery error:', err.message, err.code || '', err.stack ? err.stack.split('\n')[0] : '');
+      // Detect connection errors and tell client to retry
+      const isConnError = err?.message?.includes('Connection') || err?.message?.includes('Closed') || err?.code === 'P1001' || err?.code === 'P1017';
+      if (isConnError) {
+        return res.status(503).json({ error:'Connection issue, please try again', code:'RETRY' });
+      }
+      return res.status(500).json({ error:'Delivery confirmation failed', details: err.message });
     }
   }
 );

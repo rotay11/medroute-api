@@ -24,7 +24,7 @@ app.use(cors({ origin: (origin, cb) => { const allowed = process.env.ALLOWED_ORI
 app.set("trust proxy", 1);
 app.set("trust proxy", 1);
 app.use(compression());
-app.use(express.json({ limit:'10mb' }));
+app.use(express.json({ limit:'25mb' }));
 app.use(express.urlencoded({ extended:true }));
 app.use(morgan('dev'));
 
