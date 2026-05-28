@@ -188,8 +188,40 @@ router.get('/route', async (req, res) => {
       select: { lat: true, lng: true, name: true, address: true }
     });
 
+    // Calculate distance-based ETA for each undelivered stop
+    // Uses geocoded coordinates: ~2.5 min/mile city driving + 8 min per stop (parking/handoff)
+    function haversineMiles(lat1, lng1, lat2, lng2) {
+      const R = 3959;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) ** 2 + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLng/2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+    const MIN_PER_MILE = 2.5;   // city driving estimate
+    const MIN_PER_STOP = 8;     // parking, walk, handoff, signature
+    const now = new Date();
+    let cumulativeMinutes = 0;
+    let prevLat = pharmacy?.lat || 37.6879;
+    let prevLng = pharmacy?.lng || -122.0561;
+    const bundlesWithEta = optimized.map(b => {
+      if (b.status === 'DELIVERED') {
+        return { ...b, eta: null, etaMinutes: 0 };
+      }
+      // If stop has coordinates, calculate real distance; otherwise use fallback
+      if (b.addressLat && b.addressLng) {
+        const miles = haversineMiles(prevLat, prevLng, b.addressLat, b.addressLng);
+        cumulativeMinutes += Math.round(miles * MIN_PER_MILE) + MIN_PER_STOP;
+        prevLat = b.addressLat;
+        prevLng = b.addressLng;
+      } else {
+        cumulativeMinutes += 18; // fallback for un-geocoded stops
+      }
+      const etaTime = new Date(now.getTime() + cumulativeMinutes * 60000);
+      return { ...b, eta: etaTime.toISOString(), etaMinutes: cumulativeMinutes };
+    });
+
     return res.json({
-      bundles: optimized,
+      bundles: bundlesWithEta,
       startPoint: {
         lat: pharmacy?.lat || 37.6879,
         lng: pharmacy?.lng || -122.0561,
