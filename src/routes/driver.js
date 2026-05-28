@@ -46,4 +46,36 @@ router.get('/stats', async (req, res) => {
   } catch (err) { return res.status(500).json({ error:'Could not load stats' }); }
 });
 
+// End route - driver pauses tracking
+router.post('/end-route', async (req, res) => {
+  try {
+    await prisma.driver.update({
+      where: { id: req.driver.id },
+      data: { status: 'OFFLINE' }
+    });
+    await prisma.auditLog.create({
+      data: { actorId: req.driver.id, actorType: 'driver', action: 'ROUTE_ENDED', entityType: 'driver', entityId: req.driver.id }
+    }).catch(() => {});
+    return res.json({ success: true, status: 'OFFLINE' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Could not end route' });
+  }
+});
+
+// Resume route - driver restarts tracking
+router.post('/resume-route', async (req, res) => {
+  try {
+    await prisma.driver.update({
+      where: { id: req.driver.id },
+      data: { status: 'ACTIVE' }
+    });
+    await prisma.auditLog.create({
+      data: { actorId: req.driver.id, actorType: 'driver', action: 'ROUTE_RESUMED', entityType: 'driver', entityId: req.driver.id }
+    }).catch(() => {});
+    return res.json({ success: true, status: 'ACTIVE' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Could not resume route' });
+  }
+});
+
 module.exports = router;
