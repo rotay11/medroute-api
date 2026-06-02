@@ -36,6 +36,7 @@ app.use('/api/auth/login', loginLimiter);
 app.use('/api/health',   require('./routes/health'));
 app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/driver',   require('./routes/driver'));
+app.use('/api/admin',    require('./routes/admin-backfill'));
 app.use('/api/scan',     require('./routes/scan'));
 app.use('/api/bundle',   require('./routes/bundle'));
 app.use('/api/delivery', require('./routes/delivery'));
