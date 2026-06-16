@@ -505,4 +505,66 @@ router.post('/create-delivery', async (req, res) => {
 
 
 
+// Add additional packages (a new page) to an existing bundle without creating a duplicate stop
+router.post('/add-to-bundle/:bundleId', async (req, res) => {
+  try {
+    const bundle = await prisma.bundle.findFirst({
+      where: { id: req.params.bundleId, driverId: req.driver.id },
+      include: { packages: { select: { rxId: true } } }
+    });
+    if (!bundle) return res.status(404).json({ error: 'Bundle not found' });
+    if (bundle.status === 'DELIVERED') {
+      return res.status(400).json({ error: 'Cannot add to a completed delivery' });
+    }
+
+    const medList = Array.isArray(req.body.medications) ? req.body.medications : [];
+    const pharmacy = await prisma.pharmacy.findFirst();
+    const existingRxIds = new Set(bundle.packages.map(p => p.rxId));
+    const seenInBatch = new Set();
+    const added = [];
+    const skipped = [];
+
+    for (const med of medList) {
+      const cleanedRx = cleanRxNumber(med.rxNumber);
+      if (!cleanedRx || cleanedRx.trim().length < 3) continue;
+      if (existingRxIds.has(cleanedRx) || seenInBatch.has(cleanedRx)) {
+        skipped.push(cleanedRx);
+        continue;
+      }
+      seenInBatch.add(cleanedRx);
+      const dupCheck = await prisma.package.findFirst({ where: { rxId: cleanedRx } });
+      if (dupCheck) { skipped.push(cleanedRx); continue; }
+      const pkg = await prisma.package.create({
+        data: {
+          rxId: cleanedRx,
+          medication: med.medication || 'Unknown',
+          dosage: '',
+          quantity: med.quantity || '1',
+          patientId: bundle.patientId,
+          pharmacyId: pharmacy?.id || null,
+          bundleId: bundle.id,
+          status: 'PENDING',
+          urgent: false,
+        }
+      });
+      added.push(pkg);
+    }
+
+    await prisma.auditLog.create({
+      data: { actorId: req.driver.id, actorType: 'driver', action: 'BUNDLE_PAGE_ADDED', entityType: 'bundle', entityId: bundle.id, metadata: { added: added.length, skipped: skipped.length } }
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      bundleId: bundle.id,
+      added: added.length,
+      skipped: skipped.length,
+      message: 'Added ' + added.length + ' medication(s) to existing delivery'
+    });
+  } catch (err) {
+    console.error('Add page error:', err);
+    return res.status(500).json({ error: 'Could not add page to delivery', details: err.message });
+  }
+});
+
 module.exports = router;

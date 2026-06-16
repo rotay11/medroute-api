@@ -221,4 +221,33 @@ router.post('/reorder', async (req, res) => {
   }
 });
 
+// Delete a bundle (driver removes accidental delivery from their route)
+router.delete('/:id', async (req, res) => {
+  try {
+    const bundle = await prisma.bundle.findFirst({
+      where: { id: req.params.id, driverId: req.driver.id },
+      include: { packages: { select: { id: true } } }
+    });
+    if (!bundle) return res.status(404).json({ error: 'Bundle not found' });
+    if (bundle.status === 'DELIVERED') {
+      return res.status(400).json({ error: 'Cannot delete a completed delivery' });
+    }
+    // Delete packages associated with this bundle (they were created from this manifest)
+    const pkgIds = bundle.packages.map(p => p.id);
+    if (pkgIds.length > 0) {
+      await prisma.scan.deleteMany({ where: { packageId: { in: pkgIds } } }).catch(() => {});
+      await prisma.discrepancy.deleteMany({ where: { packageId: { in: pkgIds } } }).catch(() => {});
+      await prisma.package.deleteMany({ where: { id: { in: pkgIds } } });
+    }
+    await prisma.bundle.delete({ where: { id: bundle.id } });
+    await prisma.auditLog.create({
+      data: { actorId: req.driver.id, actorType: 'driver', action: 'BUNDLE_DELETED', entityType: 'bundle', entityId: bundle.id, metadata: { packagesRemoved: pkgIds.length } }
+    }).catch(() => {});
+    return res.json({ success: true, deleted: bundle.id, packagesRemoved: pkgIds.length });
+  } catch (err) {
+    console.error('Bundle delete error:', err);
+    return res.status(500).json({ error: 'Could not delete bundle', details: err.message });
+  }
+});
+
 module.exports = router;
